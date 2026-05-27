@@ -155,6 +155,7 @@ docs/
   mvp2-analysis.md           MVP2 content analysis guide
   mvp2-review-llm.md         MVP2.1 LLM policy and human review guide
   mvp3-html-browser.md       MVP3 HTML asset browser guide
+  agent-lifecycle.md         Agent lifecycle and daily run guide
 src/pfkb/
   policy.py                  Privacy policy engine
   scan.py                    Dry-run scanner
@@ -235,6 +236,7 @@ Current tests cover:
 - [MVP2 Content Analysis Guide](docs/mvp2-analysis.md)
 - [MVP2.1 LLM Policy and Human Review Guide](docs/mvp2-review-llm.md)
 - [MVP3 HTML Asset Browser Guide](docs/mvp3-html-browser.md)
+- [Agent Lifecycle and Daily Run Guide](docs/agent-lifecycle.md)
 
 ## License
 

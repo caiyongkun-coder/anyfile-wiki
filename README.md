@@ -153,6 +153,7 @@ docs/
   mvp2-analysis.md           MVP2 内容分析说明
   mvp2-review-llm.md         MVP2.1 LLM 策略与人工待整理清单
   mvp3-html-browser.md       MVP3 HTML 资产浏览页说明
+  agent-lifecycle.md         Agent 生命周期与日常运行流程
 src/pfkb/
   policy.py                  隐私策略引擎
   scan.py                    dry-run 扫描器
@@ -231,6 +232,7 @@ python -m pytest -q
 - [MVP2 内容分析说明](docs/mvp2-analysis.md)
 - [MVP2.1 LLM 策略与人工待整理清单](docs/mvp2-review-llm.md)
 - [MVP3 HTML 资产浏览页说明](docs/mvp3-html-browser.md)
+- [Agent 生命周期与日常运行流程](docs/agent-lifecycle.md)
 
 ## 许可证
 
