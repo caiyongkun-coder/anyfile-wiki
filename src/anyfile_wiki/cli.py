@@ -11,6 +11,12 @@ from .analyze import (
     write_analysis_comparison_md,
     write_analysis_outputs,
 )
+from .decisions import (
+    decisions_as_dicts,
+    format_decisions_summary,
+    load_review_decisions,
+    write_decisions_summary_md,
+)
 from .html import load_browser_records, write_knowledge_browser_html
 from .inventory import Inventory
 from .llm_config import describe_llm_config, load_llm_config
@@ -132,6 +138,12 @@ def build_parser() -> ArgumentParser:
     review.add_argument("--limit", type=int, default=1000, help="Maximum inventory files to inspect")
     review.add_argument("--json", action="store_true", help="Print review items as JSON")
     review.set_defaults(func=cmd_review)
+
+    decisions = subparsers.add_parser("decisions", help="Read human review decisions exported from HTML")
+    decisions.add_argument("--decisions", default="data/review/review-decisions.jsonl", help="review-decisions.jsonl path")
+    decisions.add_argument("--out", default=None, help="Optional Markdown summary path")
+    decisions.add_argument("--json", action="store_true", help="Emit JSON")
+    decisions.set_defaults(func=cmd_decisions)
 
     html = subparsers.add_parser("html", help="Build a local HTML asset browser from a knowledge index")
     html.add_argument("--analysis", default="data/analyze/knowledge-index.jsonl", help="knowledge-index.jsonl or analysis-manifest.jsonl path")
@@ -438,6 +450,27 @@ def cmd_review(args) -> int:
         print(f"{name}: {path}")
     for category, count in sorted(stats.items()):
         print(f"{category}: {count}")
+    return 0
+
+
+def cmd_decisions(args) -> int:
+    decisions_path = Path(args.decisions)
+    if not decisions_path.exists():
+        print(f"decisions file not found: {decisions_path}", file=sys.stderr)
+        return 2
+    try:
+        decisions = load_review_decisions(decisions_path)
+    except ValueError as exc:
+        print(f"invalid decisions file: {exc}", file=sys.stderr)
+        return 2
+    if args.out:
+        write_decisions_summary_md(decisions, args.out)
+    if args.json:
+        print(json.dumps({"records": decisions_as_dicts(decisions)}, ensure_ascii=False, indent=2))
+        return 0
+    print(format_decisions_summary(decisions))
+    if args.out:
+        print(f"decisions_summary_md: {Path(args.out)}")
     return 0
 
 

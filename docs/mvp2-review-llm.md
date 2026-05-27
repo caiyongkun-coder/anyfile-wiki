@@ -91,6 +91,7 @@ anyfile-wiki review --inventory data/first-scan/inventory.sqlite --analysis data
 
 - `human-review.md`：给人看的待整理清单。
 - `human-review.jsonl`：给 agent 或后续程序读取的结构化清单。
+- `human-review.html`：给人逐项批复的静态页面。
 
 清单会包含这些类型：
 
@@ -103,20 +104,28 @@ anyfile-wiki review --inventory data/first-scan/inventory.sqlite --analysis data
 - `cloud_not_authorized`：云端模式下路径未显式授权。
 - `cloud_forbidden_by_policy`：策略禁止云端处理。
 
-## HTML 交互版
+## HTML 批复版
 
 当前阶段继续保留 Markdown 和 JSONL：Markdown 适合人直接打开审阅，JSONL 适合 agent 和脚本读取。
 
-随着文件数量增加，只靠 Markdown 会越来越难翻阅。当前已经先实现只读资产浏览页：
+随着文件数量增加，只靠 Markdown 会越来越难翻阅。当前已经实现两类 HTML：
 
 ```powershell
 anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
 
 - `knowledge-index.html`：给人按标签、内容类型、分析方式和复核状态逐层浏览知识库。
-- `human-review.html`：仍在后续计划中，用来处理待整理文件，并把选择写回本地决策记录。
+- `human-review.html`：给人处理待整理文件，并导出本地决策记录。
 
-后续可回写的 HTML 审阅页优先支持这些交互：
+`human-review.html` 是静态单文件页面。它不会直接执行本地命令，也不会绕过隐私策略；用户点击“导出批复”后，浏览器下载 `review-decisions.jsonl`，再由 agent 读取。
+
+读取批复结果：
+
+```powershell
+anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --out data/first-review/decisions-summary.md
+```
+
+当前 HTML 审阅页支持这些批复动作：
 
 - 允许本地 LLM 查看这个文件。
 - 在云端策略已经显式授权的前提下，允许云端 LLM 查看这个文件。
@@ -125,7 +134,7 @@ anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data
 - 标记为已人工整理。
 - 保持本地-only，不允许云端读取。
 
-这些交互不应该悄悄删除文件，也不应该直接绕过隐私策略。建议把用户选择写入独立的本地记录，例如 `review-decisions.jsonl`，再由后续命令显式应用到配置或分析流程。
+这些交互不会悄悄删除文件，也不会直接改隐私配置。当前只把用户选择写入独立记录；后续再增加显式应用决策的流程。
 
 ## 设计原则
 

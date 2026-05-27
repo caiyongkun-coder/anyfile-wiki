@@ -118,10 +118,7 @@ anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data
 
 - `knowledge-index.html`：资产浏览页。
 - `human-review.md` 和 `human-review.jsonl`：需要人类复核的清单。
-
-后续需要实现：
-
-- `human-review.html`：人类批复页面。
+- `human-review.html`：人类批复页面，可导出 `review-decisions.jsonl`。
 
 ### 3. 人类批复，Agent 继续
 
@@ -138,6 +135,12 @@ agent 生成 human-review.html
 ```
 
 静态 HTML 页面不需要自己启动本地命令。它只需要把人的批复保存成 agent 可读的结构化文件。
+
+当前读取命令：
+
+```powershell
+anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --out data/first-review/decisions-summary.md
+```
 
 建议批复文件：
 
@@ -254,8 +257,8 @@ agent 读取 review-decisions.jsonl 并继续
 
 ## 当前建议的下一步
 
-1. 实现 `human-review.html` 静态批复页。
-2. 定义并测试 `review-decisions.jsonl`。
-3. 增加 `anyfile-wiki decisions` 命令，让 agent 能读取人类批复。
+1. 增加后续应用决策的命令，让 agent 能把人类批复显式转成配置、重跑计划或忽略清单。
+2. 为日常扫描补充 `run-state.json` 进度恢复机制。
+3. 扩展 `human-review.html` 的批量批复和标签编辑能力。
 4. 设计 `run-state.json`，支持日常空闲扫描的进度保存和断点续跑。
 5. 再确认 agent 最终消费的知识库形态：JSONL、Markdown/wiki、MCP/GNO，或组合。

@@ -11,6 +11,7 @@ from anyfile_wiki.llm_config import cloud_allowed_for_path, describe_llm_config,
 from anyfile_wiki.parse import ExtractResult
 from anyfile_wiki.policy import AccessDecision
 from anyfile_wiki.review import build_review_items
+from anyfile_wiki.review_ui import render_human_review_html
 from anyfile_wiki.scan import ScanEntry
 
 
@@ -209,12 +210,88 @@ def test_review_cli_writes_human_review_outputs(tmp_path):
     assert "human_review_md" in stdout
     review_md = out_dir / "human-review.md"
     review_jsonl = out_dir / "human-review.jsonl"
+    review_html = out_dir / "human-review.html"
     assert review_md.exists()
     assert review_jsonl.exists()
+    assert review_html.exists()
     text = review_md.read_text(encoding="utf-8")
     assert "# 人工待整理清单" in text
     assert "规则版标签或低置信度结果" in text
     assert "隐私策略阻止读取" in text
+    html = review_html.read_text(encoding="utf-8")
+    assert "AnyFile Wiki 人工复核" in html
+    assert "导出批复 / Export" in html
+    assert "review-decisions.jsonl" in html
+
+
+def test_render_human_review_html_embeds_items_and_decision_controls(tmp_path):
+    item = build_review_items(
+        [
+            {
+                "path": str(tmp_path / "allowed.md"),
+                "extension": ".md",
+                "is_dir": False,
+                "access_policy": "allow",
+                "policy_source": "test",
+                "policy_reason": "fixture",
+                "is_read_allowed": True,
+                "is_extract_allowed": True,
+            }
+        ],
+        {},
+    )[0]
+
+    html = render_human_review_html([item], source_path="human-review.jsonl")
+
+    assert "AnyFile Wiki 人工复核" in html
+    assert "Human review" in html
+    assert "允许本地 LLM / Local LLM" in html
+    assert "保持隐私 / Keep private" in html
+    assert "review-decisions.jsonl" in html
+    assert "human-review.jsonl" in html
+
+
+def test_decisions_cli_reads_exported_jsonl_and_writes_summary(tmp_path):
+    decisions_path = tmp_path / "review-decisions.jsonl"
+    decisions_path.write_text(
+        json.dumps(
+            {
+                "path": "C:/Users/me/Documents/allowed.md",
+                "category": "rules_only_or_low_confidence",
+                "severity": "medium",
+                "decision": "allow_local_llm",
+                "manual_tags": ["topic/semantic_analysis"],
+                "note": "用本地模型复核",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    summary_path = tmp_path / "decisions-summary.md"
+
+    code, stdout, stderr = _run_cli(["decisions", "--decisions", str(decisions_path), "--out", str(summary_path)])
+
+    assert code == 0, stderr
+    assert "review_decisions:" in stdout
+    assert "allow_local_llm: 1" in stdout
+    assert "decisions_summary_md" in stdout
+    assert summary_path.exists()
+    assert "人工批复结果摘要" in summary_path.read_text(encoding="utf-8")
+
+
+def test_decisions_cli_rejects_unknown_decision(tmp_path):
+    decisions_path = tmp_path / "review-decisions.jsonl"
+    decisions_path.write_text(
+        json.dumps({"path": "C:/bad.md", "decision": "delete_immediately"}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    code, stdout, stderr = _run_cli(["decisions", "--decisions", str(decisions_path)])
+
+    assert code == 2
+    assert stdout == ""
+    assert "unsupported decision" in stderr
 
 
 def test_llm_cli_explains_default_config(tmp_path):

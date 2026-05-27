@@ -9,6 +9,7 @@ import json
 
 from .llm_config import cloud_allowed_for_path, describe_llm_config
 from .parse import choose_parser
+from .review_ui import write_human_review_html
 
 
 @dataclass(frozen=True)
@@ -169,7 +170,8 @@ def write_review_outputs(items: list[ReviewItem], output_dir: str | Path) -> dic
         for item in items:
             handle.write(json.dumps(asdict(item), ensure_ascii=False, sort_keys=True) + "\n")
     write_review_md(items, md_path)
-    return {"human_review_jsonl": jsonl_path, "human_review_md": md_path}
+    html_path = write_human_review_html(items, root, source_path=jsonl_path)
+    return {"human_review_jsonl": jsonl_path, "human_review_md": md_path, "human_review_html": html_path}
 
 
 def write_review_md(items: list[ReviewItem], path: str | Path) -> None:
