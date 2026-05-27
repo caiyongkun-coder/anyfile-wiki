@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pfkb.analyze import analyze_extract_records, classify_content_type, infer_tags
@@ -10,6 +11,8 @@ from pfkb.cli import main as cli_main
 from pfkb.inventory import Inventory
 from pfkb.llm_client import LLMAnalysisRequest, LLMAnalysisResponse
 from pfkb.parse import ExtractResult
+from pfkb.policy import AccessDecision
+from pfkb.scan import ScanEntry
 
 
 def _extract_result(
@@ -32,6 +35,37 @@ def _extract_result(
     )
 
 
+def _scan_entry(source: Path, *, access_policy: str = "allow") -> ScanEntry:
+    read_allowed = access_policy in {"allow", "no_embedding"}
+    extract_allowed = read_allowed
+    embedding_allowed = access_policy == "allow"
+    return ScanEntry(
+        path=str(source),
+        name=source.name,
+        extension=source.suffix.lower(),
+        is_dir=False,
+        exists_now=True,
+        size_bytes=source.stat().st_size if source.exists() else 0,
+        mtime=source.stat().st_mtime if source.exists() else None,
+        ctime=source.stat().st_ctime if source.exists() else None,
+        decision=AccessDecision(
+            path=str(source),
+            is_dir=False,
+            access_policy=access_policy,
+            policy_source="test",
+            reason=f"fixture policy: {access_policy}",
+            is_read_allowed=read_allowed,
+            is_extract_allowed=extract_allowed,
+            is_index_allowed=access_policy != "metadata_only",
+            is_embedding_allowed=embedding_allowed,
+            metadata_only=access_policy == "metadata_only",
+            is_excluded=access_policy == "deny",
+        ),
+        last_seen_at=datetime.now(timezone.utc).isoformat(),
+        extra={},
+    )
+
+
 def _run_cli(argv: list[str]) -> tuple[int, str, str]:
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -43,6 +77,57 @@ def _run_cli(argv: list[str]) -> tuple[int, str, str]:
         else:
             code = int(result)
     return code, stdout.getvalue(), stderr.getvalue()
+
+
+def _write_llm_config(path: Path, *, mode: str, allowed_path: Path | None = None) -> None:
+    allowed_paths = [str(allowed_path)] if allowed_path else []
+    path.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "llm:",
+                f"  mode: {mode}",
+                "local:",
+                "  enabled: true",
+                "  provider: ollama",
+                "  model: fake-local",
+                "  endpoint: http://localhost:11434",
+                "cloud:",
+                "  enabled: true",
+                "  provider: compatible",
+                "  model: fake-cloud",
+                "  endpoint: https://example.invalid/v1",
+                "  risk_acknowledged: true",
+                "  allowed_policies: [allow]",
+                "  forbidden_policies: [deny, metadata_only, no_embedding]",
+                "  allowed_paths:",
+                *[f"    - {item}" for item in allowed_paths],
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_tags_config(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "tags:",
+                "  - id: topic/privacy_policy",
+                "    zh: privacy",
+                "    en: privacy",
+                "    dimension: topic",
+                "  - id: document/note",
+                "    zh: note",
+                "    en: note",
+                "    dimension: document",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 class FakeLLMClient:
@@ -177,6 +262,60 @@ def test_local_llm_analysis_uses_extracted_text_and_fake_client(tmp_path):
     assert fake.requests[0].allowed_tags == ["topic/privacy_policy", "document/note"]
 
 
+def test_local_llm_cli_with_enabled_config_writes_manifest_and_knowledge_index(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "notes.md"
+    source.write_text("# Notes\n\nlocal llm source", encoding="utf-8")
+    output = tmp_path / "extract" / "notes.md"
+    output.parent.mkdir()
+    output.write_text("# Notes\n\nprivacy policy and local llm text", encoding="utf-8")
+    inventory_path = tmp_path / "inventory.sqlite"
+    with Inventory(inventory_path) as inventory:
+        inventory.upsert_entries([_scan_entry(source, access_policy="allow")])
+        inventory.add_extract_results([_extract_result(source, output, status="ok")])
+
+    llm_config = tmp_path / "llm.yaml"
+    tags_config = tmp_path / "tags.yaml"
+    _write_llm_config(llm_config, mode="local")
+    _write_tags_config(tags_config)
+    fake = FakeLLMClient()
+    monkeypatch.setattr("pfkb.analyze.ConfiguredLLMClient", lambda config, method: fake)
+
+    out_dir = tmp_path / "analysis"
+    code, stdout, stderr = _run_cli(
+        [
+            "analyze",
+            "--inventory",
+            str(inventory_path),
+            "--out",
+            str(out_dir),
+            "--method",
+            "local-llm",
+            "--llm-config",
+            str(llm_config),
+            "--tags-config",
+            str(tags_config),
+        ]
+    )
+
+    assert code == 0, stderr
+    assert "method: local-llm" in stdout
+    assert "ok: 1" in stdout
+    assert len(fake.requests) == 1
+    manifest = out_dir / "analysis-manifest.jsonl"
+    index_jsonl = out_dir / "knowledge-index.jsonl"
+    index_md = out_dir / "knowledge-index.md"
+    assert manifest.exists()
+    assert index_jsonl.exists()
+    assert index_md.exists()
+    manifest_records = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
+    index_records = [json.loads(line) for line in index_jsonl.read_text(encoding="utf-8").splitlines()]
+    assert manifest_records[0]["analysis_method"] == "local-llm"
+    assert manifest_records[0]["status"] == "ok"
+    assert index_records[0]["analysis_method"] == "local-llm"
+
+
 def test_cloud_llm_skips_without_policy_context_and_does_not_call_client(tmp_path):
     source = tmp_path / "allowed" / "notes.md"
     output = tmp_path / "extract" / "notes.md"
@@ -250,6 +389,105 @@ def test_cloud_llm_requires_allowed_path_before_calling_client(tmp_path):
     assert results[0].status == "ok"
     assert results[0].analysis_method == "cloud-llm"
     assert len(fake.requests) == 1
+
+
+def test_cloud_llm_skips_for_forbidden_or_unauthorized_policies_without_client(tmp_path):
+    allowed_root = tmp_path / "allowed"
+    other_root = tmp_path / "other"
+    allowed_root.mkdir()
+    other_root.mkdir()
+    cases = [
+        (allowed_root / "contract.md", "no_embedding"),
+        (allowed_root / "tax.md", "metadata_only"),
+        (other_root / "notes.md", "allow"),
+    ]
+    records = []
+    for source, access_policy in cases:
+        output = tmp_path / "extract" / f"{source.stem}.md"
+        output.parent.mkdir(exist_ok=True)
+        output.write_text("# Cloud\n\nfixture", encoding="utf-8")
+        records.append(
+            {
+                "path": str(source),
+                "output_path": str(output),
+                "status": "ok",
+                "parser": "direct_text",
+                "embedding_allowed": access_policy == "allow",
+                "access_policy": access_policy,
+            }
+        )
+    fake = FakeLLMClient()
+
+    results = analyze_extract_records(
+        records,
+        analysis_method="cloud-llm",
+        llm_config={
+            "llm": {"mode": "cloud"},
+            "cloud": {
+                "enabled": True,
+                "risk_acknowledged": True,
+                "allowed_policies": ["allow"],
+                "forbidden_policies": ["deny", "metadata_only", "no_embedding"],
+                "allowed_paths": [allowed_root.as_posix()],
+            },
+        },
+        llm_client=fake,
+    )
+
+    assert fake.requests == []
+    assert [result.status for result in results] == ["skipped", "skipped", "skipped"]
+    assert {result.review_reason for result in results} == {"cloud_not_authorized"}
+
+
+def test_cloud_llm_cli_calls_fake_client_when_inventory_policy_and_path_are_allowed(
+    tmp_path, monkeypatch
+):
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    source = allowed_root / "notes.md"
+    source.write_text("# Notes\n\ncloud llm source", encoding="utf-8")
+    output = tmp_path / "extract" / "notes.md"
+    output.parent.mkdir()
+    output.write_text("# Notes\n\ncloud allowed text", encoding="utf-8")
+    inventory_path = tmp_path / "inventory.sqlite"
+    with Inventory(inventory_path) as inventory:
+        inventory.upsert_entries([_scan_entry(source, access_policy="allow")])
+        inventory.add_extract_results([_extract_result(source, output, status="ok")])
+
+    llm_config = tmp_path / "llm.yaml"
+    tags_config = tmp_path / "tags.yaml"
+    _write_llm_config(llm_config, mode="cloud", allowed_path=allowed_root)
+    _write_tags_config(tags_config)
+    fake = FakeLLMClient()
+    monkeypatch.setattr("pfkb.analyze.ConfiguredLLMClient", lambda config, method: fake)
+
+    out_dir = tmp_path / "analysis"
+    code, stdout, stderr = _run_cli(
+        [
+            "analyze",
+            "--inventory",
+            str(inventory_path),
+            "--out",
+            str(out_dir),
+            "--method",
+            "cloud-llm",
+            "--llm-config",
+            str(llm_config),
+            "--tags-config",
+            str(tags_config),
+        ]
+    )
+
+    assert code == 0, stderr
+    assert "method: cloud-llm" in stdout
+    assert "ok: 1" in stdout
+    assert len(fake.requests) == 1
+    manifest_records = [
+        json.loads(line)
+        for line in (out_dir / "analysis-manifest.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert manifest_records[0]["analysis_method"] == "cloud-llm"
+    assert manifest_records[0]["status"] == "ok"
 
 
 def test_classification_and_tags_use_path_and_content():

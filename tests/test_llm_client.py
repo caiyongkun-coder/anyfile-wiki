@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from pfkb.llm_client import (
+    LLMClientError,
     LLMAnalysisRequest,
     build_analysis_messages,
     coerce_analysis_response,
@@ -17,6 +20,14 @@ def test_parse_llm_json_accepts_fenced_json():
 
     assert payload["title"] == "Demo"
     assert payload["model_tags"] == ["topic/privacy_policy"]
+
+
+def test_parse_llm_json_rejects_invalid_json():
+    with pytest.raises(LLMClientError, match="could not be parsed"):
+        parse_llm_json('prefix {"title": "Broken", "summary": } suffix')
+
+    with pytest.raises(LLMClientError, match="did not contain a JSON object"):
+        parse_llm_json("not json at all")
 
 
 def test_coerce_analysis_response_filters_unknown_tags_and_defaults_review_reason():
@@ -45,6 +56,34 @@ def test_coerce_analysis_response_filters_unknown_tags_and_defaults_review_reaso
     assert response.tags == ["topic/privacy_policy"]
     assert response.review_reason == "llm_semantic_reviewed"
     assert response.key_points == ["point"]
+
+
+def test_coerce_analysis_response_falls_back_to_rule_tags_when_model_tags_are_filtered():
+    request_data = LLMAnalysisRequest(
+        path="notes.md",
+        text="# Notes",
+        content_type="document",
+        rule_title="Notes",
+        rule_summary="rule summary",
+        rule_tags=["document", "privacy"],
+        allowed_tags=["topic/privacy_policy", "document/note"],
+    )
+
+    response = coerce_analysis_response(
+        {
+            "title": "Model title",
+            "summary": "Model summary.",
+            "model_tags": ["invented/tag", "another_unknown"],
+            "confidence": 0.3,
+            "needs_human_review": True,
+            "review_reason": "unrecognized_reason",
+        },
+        request_data,
+    )
+
+    assert response.tags == ["document", "privacy"]
+    assert response.review_reason == "llm_low_confidence"
+    assert response.needs_human_review is True
 
 
 def test_build_analysis_messages_bounds_text_and_requests_json():

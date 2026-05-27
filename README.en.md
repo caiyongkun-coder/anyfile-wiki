@@ -40,6 +40,8 @@ PFKB is meant to be a knowledge governance layer over the local filesystem, not 
 
 ## Quick Start
 
+The recommended contributor setup is an editable install. This lets `python -m pfkb ...` find the package under the `src/` layout from normal working directories:
+
 ```powershell
 python -m pip install -e .[dev]
 
@@ -59,6 +61,13 @@ python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
 python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
+```
+
+If you do not install the package and only want to run the CLI temporarily from the source tree, set `PYTHONPATH` in the current PowerShell session first. Without this, commands such as `python -m pfkb analyze --help` can fail with `No module named pfkb`:
+
+```powershell
+$env:PYTHONPATH = 'src'
+python -m pfkb analyze --help
 ```
 
 In MVP0, `pfkb scan` is a dry-run: it creates an access plan and an inventory, but it does not read file content, summarize files, or write vectors.

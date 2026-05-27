@@ -38,6 +38,8 @@ PFKB 想做的是本地文件系统上的“知识治理层”，而不是又一
 
 ## 快速开始
 
+推荐先以 editable 模式安装项目，这样 `python -m pfkb ...` 可以从任何当前目录正常找到 `src/` 布局下的包：
+
 ```powershell
 python -m pip install -e .[dev]
 
@@ -57,6 +59,13 @@ python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
 python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
+```
+
+如果不安装包、只是临时从源码树运行 CLI，请先在当前 PowerShell 会话中设置 `PYTHONPATH`，否则 `python -m pfkb analyze --help` 等命令会因为找不到 `src/pfkb` 而失败：
+
+```powershell
+$env:PYTHONPATH = 'src'
+python -m pfkb analyze --help
 ```
 
 `pfkb scan` 在 MVP0 中是 dry-run：它只生成访问计划和 inventory，不读取正文、不做摘要、不写入向量库。

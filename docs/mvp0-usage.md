@@ -2,6 +2,23 @@
 
 MVP0 只做隐私优先的 dry-run 扫描：遍历路径、应用访问策略、记录元数据和审计结果，不读取文件正文，不解析正文，也不写入全文索引或向量索引。
 
+## 运行 CLI 前
+
+推荐新贡献者先在仓库根目录执行 editable install。项目采用 `src/` 布局，安装后 `python -m pfkb ...` 才能稳定找到包：
+
+```powershell
+python -m pip install -e .[dev]
+```
+
+如果暂时不安装包，只从源码树运行命令，请先在当前 PowerShell 会话设置 `PYTHONPATH`：
+
+```powershell
+$env:PYTHONPATH = 'src'
+python -m pfkb analyze --help
+```
+
+未安装 editable 包且未设置 `PYTHONPATH` 时，`python -m pfkb ...` 可能报 `No module named pfkb`。
+
 ## 准备隐私策略
 
 先从示例策略复制一份本地配置：
