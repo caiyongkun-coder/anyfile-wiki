@@ -141,4 +141,4 @@ Current tests cover:
 
 ## License
 
-The license has not been finalized yet. Before accepting public contributions, choose one explicit license such as MIT, Apache-2.0, or AGPL-3.0 so contributors know how code and shared results may be used.
+This project is licensed under the [Apache License 2.0](LICENSE).

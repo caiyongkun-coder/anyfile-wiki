@@ -141,4 +141,4 @@ python -m pytest -q
 
 ## 许可证
 
-许可证尚未最终选择。公开协作前建议在 MIT、Apache-2.0 或 AGPL-3.0 中明确一种，以便贡献者知道代码和成果如何共享。
+本项目使用 [Apache License 2.0](LICENSE)。
