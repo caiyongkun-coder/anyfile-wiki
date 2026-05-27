@@ -249,6 +249,7 @@ def test_render_human_review_html_embeds_items_and_decision_controls(tmp_path):
     assert "保持隐私 / Keep private" in html
     assert "review-decisions.jsonl" in html
     assert "human-review.jsonl" in html
+    assert "Some file:// browser contexts block localStorage writes" in html
 
 
 def test_decisions_cli_reads_exported_jsonl_and_writes_summary(tmp_path):

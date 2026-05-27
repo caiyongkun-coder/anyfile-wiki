@@ -511,8 +511,14 @@ _HTML_TEMPLATE = r"""<!doctype html>
 
     .decision-button.is-active {
       border-color: var(--accent);
-      background: var(--accent-soft);
-      color: #115e59;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.16);
+    }
+
+    .decision-button.is-active::before {
+      content: "✓ ";
     }
 
     .field {
@@ -736,7 +742,12 @@ _HTML_TEMPLATE = r"""<!doctype html>
     }
 
     function saveStoredDecisions() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.decisions));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.decisions));
+      } catch (_error) {
+        // Some file:// browser contexts block localStorage writes. Keep the in-memory
+        // decision state working so button feedback and JSONL export still respond.
+      }
     }
 
     function decisionFor(item) {
