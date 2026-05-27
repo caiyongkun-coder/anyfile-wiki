@@ -78,6 +78,45 @@ def test_analyze_extract_records_generates_summary_tags_and_counts(tmp_path):
     assert result.review_reason.startswith("rules_")
 
 
+def test_codex_mock_analysis_preserves_rule_tags_and_adds_semantic_fields(tmp_path):
+    source = tmp_path / "src" / "pfkb" / "review.py"
+    output = tmp_path / "extract" / "review.py"
+    output.parent.mkdir(parents=True)
+    output.write_text(
+        "\n".join(
+            [
+                "def build_review_items(files, latest_extracts):",
+                "    return []",
+                "",
+                "def write_review_outputs(items, output_dir):",
+                "    return {'human_review_md': 'human-review.md'}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyze_extract_records(
+        [
+            {
+                "path": str(source),
+                "output_path": str(output),
+                "status": "ok",
+                "parser": "direct_text",
+                "embedding_allowed": True,
+            }
+        ],
+        analysis_method="codex-mock",
+    )
+
+    result = results[0]
+    assert result.analysis_method == "codex-mock"
+    assert result.rule_tags
+    assert "code" in result.rule_tags
+    assert "human_review" in result.tags
+    assert result.key_points
+    assert result.model_notes and "codex-mock" in result.model_notes
+
+
 def test_classification_and_tags_use_path_and_content():
     assert classify_content_type("tests/test_policy.py", ".py") == "test"
     assert classify_content_type("configs/privacy.example.yaml", ".yaml") == "config"
@@ -146,6 +185,55 @@ def test_analyze_cli_writes_knowledge_index_outputs(tmp_path):
     assert "摘要：" in index_text
     assert "failed.md" not in index_text
     assert "# 标签索引" in tag_index.read_text(encoding="utf-8")
+
+
+def test_analyze_cli_writes_codex_mock_comparison(tmp_path):
+    source = tmp_path / "docs" / "llm.md"
+    output = tmp_path / "extract" / "llm.md"
+    output.parent.mkdir()
+    output.write_text(
+        "# LLM Policy\n\nCloud allowed paths require risk acknowledgement and privacy review.",
+        encoding="utf-8",
+    )
+    inventory_path = tmp_path / "inventory.sqlite"
+    with Inventory(inventory_path) as inventory:
+        inventory.add_extract_results([_extract_result(source, output, status="ok")])
+
+    rules_dir = tmp_path / "rules"
+    code, _stdout, stderr = _run_cli(
+        [
+            "analyze",
+            "--inventory",
+            str(inventory_path),
+            "--out",
+            str(rules_dir),
+        ]
+    )
+    assert code == 0, stderr
+
+    codex_dir = tmp_path / "codex"
+    code, stdout, stderr = _run_cli(
+        [
+            "analyze",
+            "--inventory",
+            str(inventory_path),
+            "--out",
+            str(codex_dir),
+            "--method",
+            "codex-mock",
+            "--compare-to",
+            str(rules_dir / "analysis-manifest.jsonl"),
+        ]
+    )
+
+    assert code == 0, stderr
+    assert "method: codex-mock" in stdout
+    assert "analysis_comparison_md" in stdout
+    comparison = codex_dir / "analysis-comparison.md"
+    assert comparison.exists()
+    comparison_text = comparison.read_text(encoding="utf-8")
+    assert "codex-mock" in (codex_dir / "knowledge-index.md").read_text(encoding="utf-8")
+    assert "LLM" in comparison_text
 
 
 def test_latest_analyzable_extracts_prefers_latest_usable_record(tmp_path):

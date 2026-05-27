@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 import sys
 
-from .analyze import analyze_extract_records, analysis_stats, write_analysis_outputs
+from .analyze import (
+    analyze_extract_records,
+    analysis_stats,
+    write_analysis_comparison_md,
+    write_analysis_outputs,
+)
 from .inventory import Inventory
 from .llm_config import describe_llm_config, load_llm_config
 from .parse import extract_jobs, plan_parse_jobs_from_records, write_manifest
@@ -84,11 +89,22 @@ def build_parser() -> ArgumentParser:
     extracts.add_argument("--no-stats", action="store_true", help="Hide status counts")
     extracts.set_defaults(func=cmd_extracts)
 
-    analyze = subparsers.add_parser("analyze", help="Build a local rule-based knowledge index from extracted text")
+    analyze = subparsers.add_parser("analyze", help="Build a knowledge index from extracted text")
     analyze.add_argument("--inventory", default="data/inventory.sqlite", help="SQLite inventory path")
     analyze.add_argument("--out", default="data/analyze", help="Analysis output directory")
     analyze.add_argument("--limit", type=int, default=100, help="Maximum extracted records to analyze")
     analyze.add_argument("--max-text-chars", type=int, default=200_000, help="Maximum text chars to inspect per file")
+    analyze.add_argument(
+        "--method",
+        choices=["rules", "codex-mock"],
+        default="rules",
+        help="Analysis method: rules or a local mock of a future Codex/API semantic pass",
+    )
+    analyze.add_argument(
+        "--compare-to",
+        default=None,
+        help="Optional baseline analysis-manifest.jsonl to compare against",
+    )
     analyze.add_argument("--json", action="store_true", help="Print analyzed records as JSON")
     analyze.set_defaults(func=cmd_analyze)
 
@@ -315,14 +331,23 @@ def cmd_analyze(args) -> int:
     with Inventory(inventory_path) as inventory:
         latest = inventory.latest_analyzable_extracts_by_path()
     records = sorted(latest.values(), key=lambda record: str(record.get("path", "")))[: args.limit]
-    results = analyze_extract_records(records, max_text_chars=args.max_text_chars)
+    results = analyze_extract_records(
+        records,
+        max_text_chars=args.max_text_chars,
+        analysis_method=args.method,
+    )
     outputs = write_analysis_outputs(results, args.out)
+    if args.compare_to:
+        comparison_path = Path(args.out) / "analysis-comparison.md"
+        write_analysis_comparison_md(_load_jsonl(args.compare_to), results, comparison_path)
+        outputs["analysis_comparison_md"] = comparison_path
     stats = analysis_stats(results)
     if args.json:
         print(json.dumps([result.__dict__ for result in results], ensure_ascii=False, indent=2))
         return 0
     print(f"inputs: {len(records)}")
     print(f"analyzed: {len(results)}")
+    print(f"method: {args.method}")
     for name, path in outputs.items():
         print(f"{name}: {path}")
     for status, count in sorted(stats.items()):
@@ -378,6 +403,17 @@ def _optional_path(value: str | None) -> str | None:
         return None
     path = Path(value)
     return str(path) if path.exists() else None
+
+
+def _load_jsonl(path: str | Path) -> list[dict]:
+    records: list[dict] = []
+    jsonl_path = Path(path)
+    if not jsonl_path.exists():
+        return records
+    for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            records.append(json.loads(line))
+    return records
 
 
 def _format_privacy_summary(summary: dict, *, include_rules: bool) -> str:

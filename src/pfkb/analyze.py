@@ -8,6 +8,8 @@ from typing import Any, Iterable
 import json
 import re
 
+from .semantic import infer_semantic_understanding
+
 
 SUMMARY_MAX_CHARS = 360
 DEFAULT_MAX_TEXT_CHARS = 200_000
@@ -70,6 +72,11 @@ class AnalysisResult:
     confidence: float = 0.0
     needs_human_review: bool = True
     review_reason: str = "rules_only_no_llm"
+    rule_title: str | None = None
+    rule_summary: str | None = None
+    rule_tags: list[str] | None = None
+    key_points: list[str] | None = None
+    model_notes: str | None = None
     error: str | None = None
 
 
@@ -77,12 +84,19 @@ def analyze_extract_records(
     records: Iterable[dict[str, Any]],
     *,
     max_text_chars: int = DEFAULT_MAX_TEXT_CHARS,
+    analysis_method: str = "rules",
 ) -> list[AnalysisResult]:
     results: list[AnalysisResult] = []
     for record in records:
         if not _is_analyzable(record):
             continue
-        results.append(analyze_extract_record(record, max_text_chars=max_text_chars))
+        results.append(
+            analyze_extract_record(
+                record,
+                max_text_chars=max_text_chars,
+                analysis_method=analysis_method,
+            )
+        )
     return results
 
 
@@ -90,7 +104,11 @@ def analyze_extract_record(
     record: dict[str, Any],
     *,
     max_text_chars: int = DEFAULT_MAX_TEXT_CHARS,
+    analysis_method: str = "rules",
 ) -> AnalysisResult:
+    if analysis_method not in {"rules", "codex-mock"}:
+        raise ValueError(f"unsupported analysis method: {analysis_method}")
+
     output_path = Path(str(record.get("output_path") or ""))
     source_path = str(record.get("path") or "")
     parser = str(record.get("parser") or "")
@@ -105,6 +123,32 @@ def analyze_extract_record(
         title = infer_title(source_path, text)
         summary = summarize_text(text, title=title)
         confidence, review_reason = assess_rules_confidence(text, summary, tags, content_type)
+        rule_title = title
+        rule_summary = summary
+        rule_tags = tags
+
+        if analysis_method == "codex-mock":
+            semantic = infer_semantic_understanding(
+                source_path,
+                text,
+                content_type=content_type,
+                rule_title=rule_title,
+                rule_summary=rule_summary,
+                rule_tags=rule_tags,
+            )
+            title = semantic.title
+            summary = semantic.summary
+            tags = semantic.tags
+            confidence = semantic.confidence
+            review_reason = semantic.review_reason
+            needs_human_review = semantic.needs_human_review
+            key_points = semantic.key_points
+            model_notes = semantic.model_notes
+        else:
+            needs_human_review = confidence < 0.65
+            key_points = None
+            model_notes = None
+
         return AnalysisResult(
             path=source_path,
             output_path=str(output_path),
@@ -122,10 +166,15 @@ def analyze_extract_record(
             line_count=text.count("\n") + (1 if text else 0),
             analyzed_at=analyzed_at,
             source_extract_status=status,
-            analysis_method="rules",
+            analysis_method=analysis_method,
             confidence=confidence,
-            needs_human_review=confidence < 0.65,
+            needs_human_review=needs_human_review,
             review_reason=review_reason,
+            rule_title=rule_title,
+            rule_summary=rule_summary,
+            rule_tags=rule_tags,
+            key_points=key_points,
+            model_notes=model_notes,
         )
     except Exception as exc:  # noqa: BLE001 - analysis manifest should capture failures.
         return AnalysisResult(
@@ -145,7 +194,7 @@ def analyze_extract_record(
             line_count=0,
             analyzed_at=analyzed_at,
             source_extract_status=status,
-            analysis_method="rules",
+            analysis_method=analysis_method,
             confidence=0.0,
             needs_human_review=True,
             review_reason="analysis_error",
@@ -263,16 +312,22 @@ def write_analysis_outputs(results: list[AnalysisResult], output_dir: str | Path
 
 def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) -> None:
     ok_results = [result for result in results if result.status == "ok"]
+    semantic_mode = any(result.analysis_method != "rules" for result in ok_results)
     by_type: dict[str, list[AnalysisResult]] = defaultdict(list)
     for result in ok_results:
         by_type[result.content_type].append(result)
 
+    method_note = (
+        "当前版本是模拟 API/LLM 语义版：`codex-mock` 不调用外部服务，用来验证“模型理解、总结、打标签”的输出形态；粗标签仍会保留在每条记录里，方便和规则版对比。"
+        if semantic_mode
+        else "当前版本是全本地规则版：标题来自 Markdown 标题或文件名，摘要来自正文前几段，标签来自路径、扩展名和关键词匹配；还没有使用大模型做深度理解。"
+    )
     lines = [
         "# 知识索引",
         "",
         "本文件由 `pfkb analyze` 生成，用来给人快速浏览“这批文件大概是什么”。",
         "",
-        "当前版本是全本地规则版：标题来自 Markdown 标题或文件名，摘要来自正文前几段，标签来自路径、扩展名和关键词匹配；还没有使用大模型做深度理解。",
+        method_note,
         "",
         f"生成时间：{datetime.now(timezone.utc).isoformat()}",
         "",
@@ -297,8 +352,10 @@ def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) ->
             "## 阅读说明",
             "",
             "- 这是给人先快速盘点文件的索引，不是最终结论。",
-            "- `analysis_method: rules` 表示当前没有调用大模型，只使用文件路径、扩展名、标题和关键词规则。",
-            "- `规则置信度` 不是语义理解分数，只表示规则线索是否足够清楚；低分文件建议进入人工待整理清单。",
+            "- `analysis_method: rules` 表示只使用文件路径、扩展名、标题和关键词规则。",
+            "- `analysis_method: codex-mock` 表示这是模拟 API/LLM 语义版，用来先验证真实模型接入后的数据结构和阅读体验。",
+            "- 语义版会保留 `保留粗标签` 和 `规则版摘要`，这样可以直接比较模型理解和规则粗标签的差异。",
+            "- `规则/语义置信度` 不是最终真理，只表示当前方法掌握的线索是否足够清楚；低分文件建议进入人工待整理清单。",
             "- `需要人工复核` 为“是”时，代表系统不确定文件真实主题，后续可以由用户、本地 LLM 或显式授权的云端 LLM 复核。",
             "- 标签后面的英文 key 是稳定机器字段，方便 agent、脚本和后续 HTML 页面继续读取。",
             "",
@@ -306,7 +363,8 @@ def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) ->
             "",
             "- 原始路径：文件在电脑上的位置，用来回到源文件。",
             "- 内容类型：按扩展名和目录粗分出的类型，例如代码、配置、文档、测试。",
-            "- 标签：规则版主题标签，用来帮助浏览和分组；不是大模型理解后的最终标签。",
+            "- 标签：当前分析方法产出的主题标签；语义版中代表模拟模型理解后的标签。",
+            "- 保留粗标签：规则版结果原样保留，用来做回退、审计和对比。",
             "- 允许向量化：是否允许进入语义检索或 embedding 流程；隐私策略禁止时必须保持为“否”。",
             "- 摘要：当前取自正文开头或标题附近内容，适合作为预览，不适合作为精确总结。",
         ]
@@ -316,28 +374,45 @@ def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) ->
         lines.extend(["", f"## {_content_type_label(content_type)}", ""])
         for result in sorted(by_type[content_type], key=lambda item: item.path.lower()):
             tags = " ".join(_format_tag(tag) for tag in result.tags)
+            rule_tags = " ".join(_format_tag(tag) for tag in (result.rule_tags or []))
             embedding = "是" if result.embedding_allowed else "否"
             human_review = "是" if result.needs_human_review else "否"
             review_reason = _review_reason_label(result.review_reason)
-            lines.extend(
+            confidence_label = "语义置信度" if result.analysis_method != "rules" else "规则置信度"
+            summary_label = "语义摘要" if result.analysis_method != "rules" else "摘要"
+            item_lines = [
+                f"### {result.title}",
+                "",
+                f"- 原始路径：`{result.path}`",
+                f"- 内容类型：`{result.content_type}`",
+                f"- 标签：{tags}",
+            ]
+            if result.analysis_method != "rules":
+                item_lines.append(f"- 保留粗标签：{rule_tags or '_无_'}")
+                item_lines.append(f"- 规则版摘要：{result.rule_summary or '_无_'}")
+            item_lines.extend(
                 [
-                    f"### {result.title}",
-                    "",
-                    f"- 原始路径：`{result.path}`",
-                    f"- 内容类型：`{result.content_type}`",
-                    f"- 标签：{tags}",
                     f"- 估算字数：{result.word_count}",
                     f"- 允许向量化：{embedding}",
                     f"- 分析方式：`{result.analysis_method}`",
-                    f"- 规则置信度：{result.confidence:.2f}",
+                    f"- {confidence_label}：{result.confidence:.2f}",
                     f"- 需要人工复核：{human_review}（{review_reason}；`{result.review_reason}`）",
+                ]
+            )
+            if result.key_points:
+                item_lines.append("- 理解要点：" + "；".join(result.key_points))
+            if result.model_notes:
+                item_lines.append(f"- 模型说明：{result.model_notes}")
+            item_lines.extend(
+                [
                     "",
-                    "摘要：",
+                    f"{summary_label}：",
                     "",
                     result.summary or "_暂未生成摘要。_",
                     "",
                 ]
             )
+            lines.extend(item_lines)
 
     errors = [result for result in results if result.status == "error"]
     if errors:
@@ -366,6 +441,55 @@ def write_tag_index_md(results: list[AnalysisResult], path: str | Path) -> None:
         lines.extend(["", f"## {_format_tag(tag)}", ""])
         for result in sorted(by_tag[tag], key=lambda item: item.path.lower()):
             lines.append(f"- `{result.path}` - {result.title}")
+    Path(path).write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def write_analysis_comparison_md(
+    baseline_records: Iterable[dict[str, Any]],
+    candidate_results: list[AnalysisResult],
+    path: str | Path,
+) -> None:
+    baseline_by_path = {str(record.get("path") or ""): record for record in baseline_records}
+    ok_candidates = [result for result in candidate_results if result.status == "ok"]
+    lines = [
+        "# 规则粗标签与语义理解对比",
+        "",
+        "本文件用于比较两次分析结果：一边是规则版粗标签，一边是模拟 API/LLM 的语义理解版。",
+        "",
+        "阅读时重点看三件事：语义标签是否更接近文件真实用途，语义摘要是否比规则摘要更像“理解后的说明”，以及哪些文件仍然需要人工复核。",
+        "",
+        f"生成时间：{datetime.now(timezone.utc).isoformat()}",
+        "",
+        "## 概览",
+        "",
+        f"- 语义结果文件数：{len(ok_candidates)}",
+        f"- 找到可对比的规则结果：{sum(1 for result in ok_candidates if result.path in baseline_by_path)}",
+        "",
+        "## 对比表",
+        "",
+        "| 文件 | 规则粗标签 | 语义标签 | 规则摘要 | 语义摘要 | 判断 |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for result in sorted(ok_candidates, key=lambda item: item.path.lower()):
+        baseline = baseline_by_path.get(result.path, {})
+        rule_tags = [str(tag) for tag in baseline.get("tags") or result.rule_tags or []]
+        rule_summary = str(baseline.get("summary") or result.rule_summary or "")
+        semantic_tags = result.tags
+        decision = _comparison_decision(rule_tags, semantic_tags, result)
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _table_cell(Path(result.path).name or result.path),
+                    _table_cell(" ".join(_format_tag(tag) for tag in rule_tags) or "无"),
+                    _table_cell(" ".join(_format_tag(tag) for tag in semantic_tags) or "无"),
+                    _table_cell(_truncate(rule_summary or "无", 120)),
+                    _table_cell(_truncate(result.summary or "无", 160)),
+                    _table_cell(decision),
+                ]
+            )
+            + " |"
+        )
     Path(path).write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
@@ -434,6 +558,24 @@ def _content_type_label(content_type: str) -> str:
     return labels.get(content_type, content_type)
 
 
+def _comparison_decision(
+    rule_tags: list[str],
+    semantic_tags: list[str],
+    result: AnalysisResult,
+) -> str:
+    if result.needs_human_review:
+        return "语义线索仍不足，建议人工复核"
+    if set(rule_tags) == set(semantic_tags):
+        return "标签变化不大，语义摘要可作为补充"
+    if len(semantic_tags) >= len(rule_tags):
+        return "语义标签更具体，可优先用于知识库浏览"
+    return "语义标签更收敛，可用于减少粗标签噪声"
+
+
+def _table_cell(value: str) -> str:
+    return value.replace("\n", " ").replace("|", "\\|").strip()
+
+
 def _format_tag(tag: str) -> str:
     label = _tag_label(tag)
     if label == tag:
@@ -445,21 +587,38 @@ def _tag_label(tag: str) -> str:
     labels = {
         "analysis": "分析/摘要",
         "cli": "命令行",
+        "cli_workflow": "命令行流程",
         "code": "代码",
         "config": "配置",
         "configuration": "配置",
+        "configuration_file": "配置文件",
+        "content_extraction": "正文提取",
         "docs": "文档",
         "document": "文档",
         "extract": "正文提取",
         "file": "文件",
+        "human_review": "人工复核",
+        "html_review_ui": "HTML 交互审阅",
         "inventory": "文件清单",
+        "inventory_db": "文件清单数据库",
         "license": "许可证",
+        "llm_policy": "LLM 策略",
+        "open_source": "开源治理",
         "privacy": "隐私/权限",
+        "privacy_policy": "隐私策略",
+        "project_documentation": "项目文档",
         "readme": "说明文档",
         "roadmap": "计划/路线图",
         "roots": "扫描目录",
         "scan": "扫描",
+        "scan_planning": "扫描计划",
+        "scan_reporting": "扫描报告",
+        "scan_roots": "扫描目录",
+        "semantic_analysis": "内容理解",
+        "source_code": "源码",
         "test": "测试",
+        "test_coverage": "测试覆盖",
+        "test_file": "测试文件",
         "tests": "测试",
     }
     return labels.get(tag, tag)
@@ -468,6 +627,8 @@ def _tag_label(tag: str) -> str:
 def _review_reason_label(reason: str) -> str:
     labels = {
         "analysis_error": "分析过程出错，需要人工检查",
+        "codex_mock_low_signal": "模拟语义层线索不足，需要人工复核",
+        "codex_mock_semantic_reviewed": "模拟语义层已经给出较明确判断",
         "rules_low_signal": "规则线索不足，无法可靠判断主题",
         "rules_only_needs_semantic_review": "规则版结果需要语义复核",
         "rules_only_no_llm": "没有配置 LLM，只能给出规则版结果",

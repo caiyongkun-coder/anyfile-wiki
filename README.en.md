@@ -32,7 +32,7 @@ PFKB is meant to be a knowledge governance layer over the local filesystem, not 
 - `pfkb extract` for files allowed by policy.
 - `pfkb extracts` for persisted extraction results and status counts.
 - Incremental extraction: unchanged successful sources are skipped by default, with `--force` and `--retry-failed` available.
-- `pfkb analyze` for local rule-based summaries, tags, and knowledge indexes from extracted text.
+- `pfkb analyze` for local rule-based summaries, tags, and knowledge indexes from extracted text; `--method codex-mock` simulates a future API/LLM semantic pass.
 - `pfkb llm` for explaining local/cloud model policy and cloud-read boundaries.
 - `pfkb review` for human review lists covering unreadable, unsupported, low-confidence, or cloud-unauthorized files.
 - Direct text extraction is supported; MarkItDown is an optional parser dependency.
@@ -55,6 +55,7 @@ python -m pfkb list --inventory data/smoke/inventory.sqlite
 python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
+python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
 python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
 ```
 
@@ -103,6 +104,9 @@ python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
 
 # Build a local rule-based knowledge index
 python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
+
+# Simulate an API/LLM semantic pass and compare it with the rule-based result
+python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-codex --method codex-mock --compare-to data/first-analyze/analysis-manifest.jsonl
 
 # Explain local/cloud LLM privacy policy
 python -m pfkb llm --llm-config configs/llm.example.yaml

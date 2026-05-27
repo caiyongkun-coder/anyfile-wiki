@@ -32,7 +32,7 @@ PFKB 想做的是本地文件系统上的“知识治理层”，而不是又一
 - 提供 `pfkb extract`，只对策略允许读取的文件执行提取。
 - 提供 `pfkb extracts`，查看持久化的提取结果和状态统计。
 - 支持增量提取：默认跳过源文件未变化的成功项，支持 `--force` 和 `--retry-failed`。
-- 提供 `pfkb analyze`，基于已提取文本生成本地规则版摘要、标签和知识索引。
+- 提供 `pfkb analyze`，基于已提取文本生成本地规则版摘要、标签和知识索引；也支持 `--method codex-mock` 模拟未来 API/LLM 语义理解结果。
 - 支持直接文本提取；MarkItDown 是可选解析依赖。
 
 ## 快速开始
@@ -53,6 +53,7 @@ python -m pfkb list --inventory data/smoke/inventory.sqlite
 python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
+python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
 python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
 ```
 
@@ -101,6 +102,9 @@ python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
 
 # 生成本地规则版知识索引
 python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
+
+# 模拟 API/LLM 语义理解，并和规则版结果对比
+python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-codex --method codex-mock --compare-to data/first-analyze/analysis-manifest.jsonl
 
 # 查看 LLM/云端隐私策略
 python -m pfkb llm --llm-config configs/llm.example.yaml
