@@ -232,10 +232,46 @@ _HTML_TEMPLATE = r"""<!doctype html>
       color: #fff;
     }
 
+    .button.primary.is-done {
+      border-color: var(--green);
+      background: var(--green);
+      animation: exportDonePulse 560ms ease-out;
+    }
+
     .button:hover,
     .item-row:hover {
       border-color: #aab7c7;
       background: #f8fbff;
+    }
+
+    .button.primary:hover,
+    .button.primary.is-done:hover {
+      color: #fff;
+    }
+
+    .button.primary:hover {
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+
+    .button.primary.is-done:hover {
+      border-color: var(--green);
+      background: var(--green);
+    }
+
+    @keyframes exportDonePulse {
+      0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(4, 120, 87, 0.32);
+      }
+      45% {
+        transform: scale(1.03);
+        box-shadow: 0 0 0 8px rgba(4, 120, 87, 0.16);
+      }
+      100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(4, 120, 87, 0);
+      }
     }
 
     .main {
@@ -717,7 +753,8 @@ _HTML_TEMPLATE = r"""<!doctype html>
       page: 1,
       pageSize: 10,
       selectedId: (REVIEW_DATA.items || [])[0]?.id || "",
-      decisions: loadStoredDecisions()
+      decisions: loadStoredDecisions(),
+      lastExportSignature: ""
     };
 
     function escapeHtml(value) {
@@ -756,7 +793,9 @@ _HTML_TEMPLATE = r"""<!doctype html>
 
     function setDecision(itemId, patch, shouldRender = true) {
       state.decisions[itemId] = { ...decisionFor({ id: itemId }), ...patch };
+      state.lastExportSignature = "";
       saveStoredDecisions();
+      renderExportButton();
       if (shouldRender) render();
     }
 
@@ -860,6 +899,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
       document.getElementById("pageLine").textContent = `第 ${state.page} / ${pageCount} 页 · Page ${state.page} of ${pageCount}`;
       document.getElementById("prevPage").disabled = state.page <= 1;
       document.getElementById("nextPage").disabled = state.page >= pageCount;
+      renderExportButton();
     }
 
     function renderFacets() {
@@ -1036,6 +1076,26 @@ _HTML_TEMPLATE = r"""<!doctype html>
       return records.map((record) => JSON.stringify(record)).join("\n") + (records.length ? "\n" : "");
     }
 
+    function decisionSignature() {
+      return JSON.stringify(decisionRecords().map((record) => ({
+        path: record.path,
+        category: record.category,
+        decision: record.decision,
+        manual_tags: record.manual_tags,
+        note: record.note
+      })));
+    }
+
+    function renderExportButton() {
+      const button = document.getElementById("exportJsonl");
+      if (!button) return;
+      const signature = decisionSignature();
+      const isDone = Boolean(signature && state.lastExportSignature === signature);
+      button.classList.toggle("is-done", isDone);
+      button.textContent = isDone ? "✓ 导出完成 / Exported" : "导出批复 / Export";
+      button.setAttribute("aria-label", isDone ? "导出完成 / Exported" : "导出批复 / Export");
+    }
+
     function exportJsonl() {
       const jsonl = decisionsJsonl();
       if (!jsonl) {
@@ -1051,6 +1111,8 @@ _HTML_TEMPLATE = r"""<!doctype html>
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+      state.lastExportSignature = decisionSignature();
+      renderExportButton();
     }
 
     async function copyJsonl() {
