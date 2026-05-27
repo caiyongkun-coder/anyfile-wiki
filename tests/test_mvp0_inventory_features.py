@@ -403,3 +403,101 @@ def test_roots_discovery_returns_standard_candidates_and_filters_missing(
     assert "desktop" in existing_names
     assert "documents" in existing_names
     assert "downloads" not in existing_names
+
+
+def test_roots_config_is_agent_readable_and_controls_candidates(tmp_path):
+    roots_mod = _roots_module()
+    knowledge = tmp_path / "Knowledge"
+    archive = tmp_path / "Archive"
+    knowledge.mkdir()
+    config = {
+        "version": 1,
+        "assistant": {
+            "purpose": "root setup fixture",
+            "setup_questions": ["Where is knowledge?"],
+            "selection_notes": ["Start small."],
+        },
+        "roots": [
+            {
+                "name": "knowledge",
+                "enabled": True,
+                "resolver": "path",
+                "path": knowledge.as_posix(),
+                "description": "Curated notes",
+                "risk": "low",
+                "recommended_policy": "allow",
+                "tags": ["curated"],
+            },
+            {
+                "name": "archive",
+                "enabled": False,
+                "resolver": "path",
+                "path": archive.as_posix(),
+                "description": "Old archive",
+                "risk": "high",
+                "recommended_policy": "metadata_only",
+            },
+        ],
+    }
+
+    summary = roots_mod.describe_roots_config(config)
+    assert summary["purpose"] == "root setup fixture"
+    assert summary["setup_questions"] == ["Where is knowledge?"]
+    first_root = summary["roots"][0]
+    assert first_root["name"] == "knowledge"
+    assert first_root["resolved"]["exists"] is True
+    assert first_root["resolved"]["tags"] == ["curated"]
+
+    candidates = roots_mod.discover_candidate_roots(config=config, existing_only=False)
+    assert [candidate.name for candidate in candidates] == ["knowledge"]
+
+    candidates_with_disabled = roots_mod.discover_candidate_roots(
+        config=config,
+        existing_only=False,
+        include_disabled=True,
+    )
+    assert [candidate.name for candidate in candidates_with_disabled] == [
+        "knowledge",
+        "archive",
+    ]
+
+
+def test_cli_roots_explains_config_for_humans_and_agents(tmp_path):
+    roots_config = tmp_path / "roots.yaml"
+    root = tmp_path / "Knowledge"
+    root.mkdir()
+    roots_config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "assistant:",
+                '  purpose: "roots setup fixture"',
+                "roots:",
+                "  - name: knowledge",
+                "    enabled: true",
+                "    resolver: path",
+                f'    path: "{root.as_posix()}"',
+                '    description: "Curated notes"',
+                "    risk: low",
+                "    recommended_policy: allow",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    text_code, text_out, text_err = _run_cli(
+        ["roots", "--roots-config", str(roots_config), "--explain"]
+    )
+    assert text_code == 0, text_err
+    assert "roots_config:" in text_out
+    assert "roots setup fixture" in text_out
+    assert "knowledge" in text_out
+
+    json_code, json_out, json_err = _run_cli(
+        ["roots", "--roots-config", str(roots_config), "--explain", "--json"]
+    )
+    assert json_code == 0, json_err
+    payload = json.loads(json_out)
+    assert payload["purpose"] == "roots setup fixture"
+    assert payload["roots"][0]["resolved"]["path"] == str(root)

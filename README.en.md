@@ -24,6 +24,7 @@ PFKB is meant to be a knowledge governance layer over the local filesystem, not 
 - `deny` always wins: no reading, extraction, indexing, or embedding.
 - `metadata_only`: record metadata without opening file content.
 - `no_embedding`: allow future reading/summarization but block vector indexing.
+- Recommended scan roots via `roots.example.yaml`, with human-facing notes and agent-readable setup metadata.
 - Default excludes for system folders, developer noise, dangerous extensions, installers, caches, and temporary files.
 - Dry-run scanning that only traverses paths and metadata; it does not read file bodies.
 - Outputs `scan-plan.md`, `access-log.jsonl`, and `inventory.sqlite`.
@@ -59,6 +60,10 @@ In MVP0, `pfkb scan` is a dry-run: it creates an access plan and an inventory, b
 ```powershell
 # Show suggested personal scan roots
 python -m pfkb roots --include-missing
+
+# Explain recommended scan roots config
+python -m pfkb roots --explain
+python -m pfkb roots --explain --json
 
 # Explain the privacy policy for a user or setup agent
 python -m pfkb privacy --privacy configs/privacy.yaml
@@ -96,11 +101,13 @@ python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
 
 ```text
 configs/
+  roots.example.yaml         Example recommended scan roots
   excludes.default.yaml      Default exclude rules
   privacy.example.yaml       Example user privacy policy
 docs/
   configuration.md           Configuration guide
   privacy-setup.md           Privacy setup and agent-readable policy guide
+  roots-setup.md             Recommended scan roots setup guide
   mvp0-usage.md              MVP0 usage guide
 src/pfkb/
   policy.py                  Privacy policy engine
@@ -152,6 +159,7 @@ Current tests cover:
 - Inventory queries.
 - CLI `status/list/show`.
 - Suggested scan root discovery.
+- Recommended scan roots config explanation and JSON output.
 - Parser-job policy gating.
 - Direct text extraction and extraction manifests.
 - SQLite persistence and querying for extraction results.
@@ -163,6 +171,7 @@ Current tests cover:
 - [Development Plan](DEVELOPMENT_PLAN.md)
 - [Configuration Guide](docs/configuration.md)
 - [Privacy Setup Guide](docs/privacy-setup.md)
+- [Recommended Scan Roots Setup Guide](docs/roots-setup.md)
 - [MVP0 Usage Guide](docs/mvp0-usage.md)
 - [MVP1 Extraction Guide](docs/mvp1-extraction.md)
 

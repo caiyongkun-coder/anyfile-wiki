@@ -9,7 +9,7 @@ from .inventory import Inventory
 from .parse import extract_jobs, plan_parse_jobs_from_records, write_manifest
 from .policy import PolicyEngine, describe_privacy_policy, load_policy
 from .report import write_access_log, write_scan_plan
-from .roots import discover_candidate_roots
+from .roots import describe_roots_config, discover_candidate_roots, load_roots_config
 from .scan import scan_paths
 
 
@@ -48,7 +48,10 @@ def build_parser() -> ArgumentParser:
     show.set_defaults(func=cmd_show)
 
     roots = subparsers.add_parser("roots", help="Show suggested personal scan roots")
+    roots.add_argument("--roots-config", default="configs/roots.example.yaml", help="Recommended roots YAML")
     roots.add_argument("--include-missing", action="store_true", help="Also show roots that do not exist")
+    roots.add_argument("--include-disabled", action="store_true", help="Also show disabled configured roots")
+    roots.add_argument("--explain", action="store_true", help="Explain the roots config instead of only listing resolved roots")
     roots.add_argument("--json", action="store_true", help="Emit JSON")
     roots.set_defaults(func=cmd_roots)
 
@@ -176,22 +179,26 @@ def cmd_show(args) -> int:
 
 
 def cmd_roots(args) -> int:
-    roots = discover_candidate_roots(existing_only=not args.include_missing)
-    payload = [
-        {
-            "name": root.name,
-            "path": str(root.path),
-            "exists": root.exists,
-            "source": root.source,
-        }
-        for root in roots
-    ]
+    config = load_roots_config(_optional_path(args.roots_config))
+    if args.explain:
+        payload = describe_roots_config(config)
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 0
+        print(_format_roots_summary(payload))
+        return 0
+    roots = discover_candidate_roots(
+        existing_only=not args.include_missing,
+        config=config,
+        include_disabled=args.include_disabled,
+    )
+    payload = [root.as_dict() for root in roots]
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
     for root in roots:
         status = "exists" if root.exists else "missing"
-        print(f"{root.name}\t{status}\t{root.path}")
+        print(f"{root.name}\t{status}\t{root.risk}\t{root.path}")
     return 0
 
 
@@ -321,6 +328,38 @@ def _format_privacy_summary(summary: dict, *, include_rules: bool) -> str:
             counts = policy.get("rule_counts") or {}
             count_text = ", ".join(f"{key}={value}" for key, value in counts.items()) or "none"
             lines.append(f"  rule_counts: {count_text}")
+    return "\n".join(lines)
+
+
+def _format_roots_summary(summary: dict) -> str:
+    lines = [
+        "roots_config:",
+        f"- version: {summary.get('version')}",
+        f"- purpose: {summary.get('purpose')}",
+    ]
+    setup_questions = summary.get("setup_questions") or []
+    if setup_questions:
+        lines.append("setup_questions:")
+        lines.extend(f"- {question}" for question in setup_questions)
+    selection_notes = summary.get("selection_notes") or []
+    if selection_notes:
+        lines.append("selection_notes:")
+        lines.extend(f"- {note}" for note in selection_notes)
+    lines.append("roots:")
+    for root in summary.get("roots", []):
+        resolved = root.get("resolved") or {}
+        path = resolved.get("path", "")
+        exists = str(resolved.get("exists", False)).lower() if resolved else "unresolved"
+        lines.append(
+            f"- {root.get('name')}: enabled={str(root.get('enabled')).lower()} "
+            f"risk={root.get('risk')} resolver={root.get('resolver')} exists={exists}"
+        )
+        if path:
+            lines.append(f"  path: {path}")
+        if root.get("description"):
+            lines.append(f"  description: {root.get('description')}")
+        if root.get("recommended_policy"):
+            lines.append(f"  recommended_policy: {root.get('recommended_policy')}")
     return "\n".join(lines)
 
 

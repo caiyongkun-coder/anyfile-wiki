@@ -1,0 +1,128 @@
+# PFKB recommended scan roots example.
+#
+# This module lists candidate directories that a user or setup agent can choose
+# from when starting a scan. It does not grant read permission by itself; every
+# path still goes through privacy.yaml and excludes.default.yaml.
+#
+# Resolver types:
+# - home: current user's home directory, from Path.home().
+# - home_child: a child directory under Path.home(), such as Documents.
+# - env: a path read from an environment variable, such as OneDrive.
+# - path: an explicit path, with ${USERPROFILE}, ${HOME}, and ~ expanded.
+
+version: 1
+
+# Ignored by the scanner. Used by humans, setup wizards, and agents.
+assistant:
+  purpose: "配置推荐扫描入口，供用户和 agent 在初始化时选择从哪些本机目录开始盘点。"
+  setup_questions:
+    - "这台电脑的主要个人资料放在桌面、文档、下载、OneDrive，还是其他目录？"
+    - "是否要把整个用户主目录作为候选？如果是，应先确认隐私规则足够保守。"
+    - "是否有外接盘、同步盘或专门的知识收件箱需要加入？"
+    - "下载目录是否噪声太多，是否只扫描 Downloads/Knowledge Inbox 这样的子目录？"
+  selection_notes:
+    - "第一次建议从 Documents、Desktop 或 Knowledge Inbox 这类范围较小的目录开始。"
+    - "home 范围较大，适合 dry-run 盘点，不建议作为第一次正文提取入口。"
+    - "Downloads 噪声较多，通常要配合 installer/cache 默认排除规则。"
+    - "云同步目录可能混有工作文件、共享文件和历史文件，建议先 dry-run。"
+
+roots:
+  - name: home
+    enabled: true
+    resolver: home
+    description: "当前系统用户主目录，范围最大。"
+    risk: high
+    recommended_policy: allow
+    tags:
+      - broad
+      - user-profile
+
+  - name: desktop
+    enabled: true
+    resolver: home_child
+    child: Desktop
+    description: "桌面，常放临时资料和近期工作文件。"
+    risk: medium
+    recommended_policy: allow
+    tags:
+      - personal
+      - recent
+
+  - name: documents
+    enabled: true
+    resolver: home_child
+    child: Documents
+    description: "文档目录，通常是第一批个人知识来源。"
+    risk: medium
+    recommended_policy: allow
+    tags:
+      - personal
+      - documents
+
+  - name: downloads
+    enabled: true
+    resolver: home_child
+    child: Downloads
+    description: "下载目录，价值和噪声都较高。"
+    risk: medium
+    recommended_policy: allow
+    tags:
+      - personal
+      - inbox
+      - noisy
+
+  - name: knowledge_inbox
+    enabled: true
+    resolver: home_child
+    child: Downloads/Knowledge Inbox
+    description: "人工整理过的知识收件箱，适合作为第一批真实提取入口。"
+    risk: low
+    recommended_policy: allow
+    tags:
+      - curated
+      - inbox
+
+  - name: onedrive
+    enabled: true
+    resolver: env
+    env: OneDrive
+    description: "OneDrive 同步目录。"
+    risk: medium
+    recommended_policy: allow
+    tags:
+      - cloud-sync
+      - personal
+
+  - name: onedrive_consumer
+    enabled: true
+    resolver: env
+    env: OneDriveConsumer
+    description: "个人版 OneDrive 同步目录。"
+    risk: medium
+    recommended_policy: allow
+    tags:
+      - cloud-sync
+      - personal
+
+  - name: onedrive_commercial
+    enabled: true
+    resolver: env
+    env: OneDriveCommercial
+    description: "组织版 OneDrive 同步目录，可能包含工作资料。"
+    risk: high
+    recommended_policy: no_embedding
+    tags:
+      - cloud-sync
+      - work
+
+  # Add local custom roots here after copying this file to configs/roots.yaml.
+  #
+  # - name: external_drive_knowledge
+  #   enabled: false
+  #   resolver: path
+  #   path: "D:/Knowledge"
+  #   description: "外接盘或专门资料盘。"
+  #   risk: medium
+  #   recommended_policy: allow
+  #   tags:
+  #     - external-drive

@@ -24,6 +24,7 @@ PFKB 想做的是本地文件系统上的“知识治理层”，而不是又一
 - `deny` 永远优先，命中后不读取、不解析、不索引。
 - 支持 `metadata_only`：只记录元数据，不读取正文。
 - 支持 `no_embedding`：允许后续读取/摘要，但禁止进入向量索引。
+- 推荐扫描目录配置 `roots.example.yaml`，支持人类说明和 AI 可读初始化信息。
 - 默认排除系统目录、开发噪声、危险扩展名、安装包、缓存和临时文件。
 - dry-run 扫描只遍历路径和元数据，不读取文件正文。
 - 输出 `scan-plan.md`、`access-log.jsonl` 和 `inventory.sqlite`。
@@ -59,6 +60,10 @@ python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 ```powershell
 # 查看推荐扫描目录
 python -m pfkb roots --include-missing
+
+# 解释推荐扫描目录配置
+python -m pfkb roots --explain
+python -m pfkb roots --explain --json
 
 # 给用户或初始化 agent 解释隐私配置
 python -m pfkb privacy --privacy configs/privacy.yaml
@@ -96,11 +101,13 @@ python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
 
 ```text
 configs/
+  roots.example.yaml         推荐扫描目录示例
   excludes.default.yaml      默认排除规则
   privacy.example.yaml       用户隐私策略示例
 docs/
   configuration.md           配置说明
   privacy-setup.md           隐私配置初始化和 AI 可读说明
+  roots-setup.md             推荐扫描目录初始化说明
   mvp0-usage.md              MVP0 使用说明
 src/pfkb/
   policy.py                  隐私策略引擎
@@ -152,6 +159,7 @@ python -m pytest -q
 - inventory 查询。
 - CLI `status/list/show`。
 - 推荐扫描目录发现。
+- 推荐扫描目录配置说明和 JSON 输出。
 - 解析任务策略门控。
 - 直接文本提取和 extraction manifest。
 - extraction result SQLite 持久化和查询。
@@ -163,6 +171,7 @@ python -m pytest -q
 - [开发计划与自研范围](DEVELOPMENT_PLAN.md)
 - [配置说明](docs/configuration.md)
 - [隐私配置初始化说明](docs/privacy-setup.md)
+- [推荐扫描目录配置说明](docs/roots-setup.md)
 - [MVP0 使用说明](docs/mvp0-usage.md)
 - [MVP1 提取说明](docs/mvp1-extraction.md)
 
