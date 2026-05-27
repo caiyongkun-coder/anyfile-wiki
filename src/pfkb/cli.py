@@ -11,6 +11,7 @@ from .analyze import (
     write_analysis_comparison_md,
     write_analysis_outputs,
 )
+from .html import load_browser_records, write_knowledge_browser_html
 from .inventory import Inventory
 from .llm_config import describe_llm_config, load_llm_config
 from .parse import extract_jobs, plan_parse_jobs_from_records, write_manifest
@@ -131,6 +132,12 @@ def build_parser() -> ArgumentParser:
     review.add_argument("--limit", type=int, default=1000, help="Maximum inventory files to inspect")
     review.add_argument("--json", action="store_true", help="Print review items as JSON")
     review.set_defaults(func=cmd_review)
+
+    html = subparsers.add_parser("html", help="Build a local HTML asset browser from a knowledge index")
+    html.add_argument("--analysis", default="data/analyze/knowledge-index.jsonl", help="knowledge-index.jsonl or analysis-manifest.jsonl path")
+    html.add_argument("--tags-config", default="configs/tags.example.yaml", help="Tag taxonomy YAML")
+    html.add_argument("--out", default="data/html", help="HTML output directory")
+    html.set_defaults(func=cmd_html)
 
     return parser
 
@@ -431,6 +438,25 @@ def cmd_review(args) -> int:
         print(f"{name}: {path}")
     for category, count in sorted(stats.items()):
         print(f"{category}: {count}")
+    return 0
+
+
+def cmd_html(args) -> int:
+    analysis_path = Path(args.analysis)
+    if not analysis_path.exists():
+        print(f"analysis file not found: {analysis_path}", file=sys.stderr)
+        return 2
+    tags_config = load_tags_config(_optional_path(args.tags_config))
+    records = load_browser_records(analysis_path)
+    outputs = write_knowledge_browser_html(
+        records,
+        args.out,
+        tags_config=tags_config,
+        source_path=analysis_path,
+    )
+    print(f"records: {len(records)}")
+    for name, path in outputs.items():
+        print(f"{name}: {path}")
     return 0
 
 

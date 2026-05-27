@@ -34,6 +34,7 @@ PFKB 想做的是本地文件系统上的“知识治理层”，而不是又一
 - 支持增量提取：默认跳过源文件未变化的成功项，支持 `--force` 和 `--retry-failed`。
 - 提供 `pfkb analyze`，基于已提取文本生成本地规则版摘要、标签和知识索引；支持 `--method codex-mock`、`--method local-llm` 和 `--method cloud-llm`。
 - 真实 LLM/API 只读取隐私门控后的提取文本；云端模式还必须显式配置授权路径和风险确认。
+- 提供 `pfkb html`，把 `knowledge-index.jsonl` 转成本地可打开的中文资产浏览页，支持标签树、筛选、搜索和文件详情。
 - 支持直接文本提取；MarkItDown 是可选解析依赖。
 
 ## 快速开始
@@ -59,6 +60,7 @@ python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
 python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
+python -m pfkb html --analysis data/smoke-analyze/knowledge-index.jsonl --out data/smoke-html
 ```
 
 如果不安装包、只是临时从源码树运行 CLI，请先在当前 PowerShell 会话中设置 `PYTHONPATH`，否则 `python -m pfkb analyze --help` 等命令会因为找不到 `src/pfkb` 而失败：
@@ -128,6 +130,9 @@ python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/f
 
 # 生成人工待整理清单
 python -m pfkb review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
+
+# 生成中文 HTML 资产浏览页
+python -m pfkb html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
 
 ## 项目结构
@@ -147,6 +152,7 @@ docs/
   mvp0-usage.md              MVP0 使用说明
   mvp2-analysis.md           MVP2 内容分析说明
   mvp2-review-llm.md         MVP2.1 LLM 策略与人工待整理清单
+  mvp3-html-browser.md       MVP3 HTML 资产浏览页说明
 src/pfkb/
   policy.py                  隐私策略引擎
   scan.py                    dry-run 扫描器
@@ -159,6 +165,7 @@ src/pfkb/
   llm_client.py              本地/云端 LLM API 客户端
   review.py                  人工待整理清单
   llm_config.py              LLM 策略配置解析
+  html.py                    本地 HTML 资产浏览页生成器
   cli.py                     CLI 入口
 tests/
   *.py                       pytest 规格测试
@@ -169,7 +176,7 @@ tests/
 - MVP0：隐私策略、默认排除、dry-run、inventory、扫描报告。
 - MVP1：接入 MarkItDown，解析常见文档格式，并输出 extraction manifest。
 - MVP2：本地摘要、标签、主题、项目和文件类型分类。
-- MVP3：人类可浏览资产地图：标签树、主题页、项目页、文件详情页。
+- MVP3：人类可浏览资产地图；第一步已经实现静态 HTML 资产浏览页，后续继续补主题页、项目页和可回写的复核交互。
 - MVP4：agent skill / MCP 集成，支持 OpenClaw、Hermes、Codex 使用本地知识。
 - MVP5：安全清理助手：重复文件、归档候选、删除候选和可回滚 manifest。
 - MVP6：应用个人数据适配器：浏览器书签、聊天导出、邮件、笔记应用等。
@@ -209,6 +216,7 @@ python -m pytest -q
 - 增量提取、强制重跑和失败重试策略。
 - 本地规则版内容分析、标签和知识索引输出。
 - 真实 LLM/API 分析入口、云端授权门禁和 JSON 响应解析。
+- 静态 HTML 资产浏览页生成、中文界面和 CLI 输出。
 
 ## 文档
 
@@ -222,6 +230,7 @@ python -m pytest -q
 - [MVP1 提取说明](docs/mvp1-extraction.md)
 - [MVP2 内容分析说明](docs/mvp2-analysis.md)
 - [MVP2.1 LLM 策略与人工待整理清单](docs/mvp2-review-llm.md)
+- [MVP3 HTML 资产浏览页说明](docs/mvp3-html-browser.md)
 
 ## 许可证
 

@@ -36,6 +36,7 @@ PFKB is meant to be a knowledge governance layer over the local filesystem, not 
 - Real LLM/API analysis only receives privacy-gated extracted text; cloud mode also requires explicit allowed paths and risk acknowledgement.
 - `pfkb llm` for explaining local/cloud model policy and cloud-read boundaries.
 - `pfkb review` for human review lists covering unreadable, unsupported, low-confidence, or cloud-unauthorized files.
+- `pfkb html` for turning `knowledge-index.jsonl` into a local Chinese asset browser with a tag tree, filters, search, and file details.
 - Direct text extraction is supported; MarkItDown is an optional parser dependency.
 
 ## Quick Start
@@ -61,6 +62,7 @@ python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
 python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
+python -m pfkb html --analysis data/smoke-analyze/knowledge-index.jsonl --out data/smoke-html
 ```
 
 If you do not install the package and only want to run the CLI temporarily from the source tree, set `PYTHONPATH` in the current PowerShell session first. Without this, commands such as `python -m pfkb analyze --help` can fail with `No module named pfkb`:
@@ -130,6 +132,9 @@ python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/f
 
 # Write the human review list
 python -m pfkb review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
+
+# Build the Chinese local HTML asset browser
+python -m pfkb html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
 
 ## Project Layout
@@ -149,6 +154,7 @@ docs/
   mvp0-usage.md              MVP0 usage guide
   mvp2-analysis.md           MVP2 content analysis guide
   mvp2-review-llm.md         MVP2.1 LLM policy and human review guide
+  mvp3-html-browser.md       MVP3 HTML asset browser guide
 src/pfkb/
   policy.py                  Privacy policy engine
   scan.py                    Dry-run scanner
@@ -161,6 +167,7 @@ src/pfkb/
   llm_client.py              Local/cloud LLM API client
   review.py                  Human review list builder
   llm_config.py              LLM policy config parser
+  html.py                    Local HTML asset browser generator
   cli.py                     CLI entry point
 tests/
   *.py                       pytest specs
@@ -172,7 +179,7 @@ tests/
 - MVP1: integrate MarkItDown for common document parsing and write an extraction manifest.
 - MVP2: local summaries, tags, topics, projects, and file-type classification.
 - MVP2.1: LLM policy, cloud authorization boundaries, and human review lists.
-- MVP3: human-browsable asset map: tag tree, topic pages, project pages, file details.
+- MVP3: human-browsable asset map. The first static HTML asset browser is implemented; topic pages, project pages, and review writeback are next.
 - MVP4: agent skill / MCP integration for OpenClaw, Hermes, Codex, and similar agents.
 - MVP5: safe cleanup assistant: duplicates, archive candidates, delete candidates, reversible manifests.
 - MVP6: app personal-data adapters: browser bookmarks, chat exports, email, note apps, and more.
@@ -213,6 +220,7 @@ Current tests cover:
 - Local rule-based content analysis, tags, and knowledge index outputs.
 - LLM policy explanation, cloud authorization boundaries, and human review list outputs.
 - Real LLM/API analysis entry points, cloud authorization gates, and JSON response parsing.
+- Static HTML asset browser generation, Chinese UI text, and CLI output.
 
 ## Docs
 
@@ -226,6 +234,7 @@ Current tests cover:
 - [MVP1 Extraction Guide](docs/mvp1-extraction.md)
 - [MVP2 Content Analysis Guide](docs/mvp2-analysis.md)
 - [MVP2.1 LLM Policy and Human Review Guide](docs/mvp2-review-llm.md)
+- [MVP3 HTML Asset Browser Guide](docs/mvp3-html-browser.md)
 
 ## License
 

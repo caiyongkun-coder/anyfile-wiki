@@ -103,16 +103,20 @@ python -m pfkb review --inventory data/first-scan/inventory.sqlite --analysis da
 - `cloud_not_authorized`：云端模式下路径未显式授权。
 - `cloud_forbidden_by_policy`：策略禁止云端处理。
 
-## 后续 HTML 交互版
+## HTML 交互版
 
 当前阶段继续保留 Markdown 和 JSONL：Markdown 适合人直接打开审阅，JSONL 适合 agent 和脚本读取。
 
-随着文件数量增加，只靠 Markdown 会越来越难翻阅。后续应在不删除 Markdown 的前提下，增加一组本地 HTML 页面：
+随着文件数量增加，只靠 Markdown 会越来越难翻阅。当前已经先实现只读资产浏览页：
 
-- `knowledge-index.html`：给人按标签、目录、内容类型逐层浏览知识库。
-- `human-review.html`：给人处理待整理文件，并把选择写回本地决策记录。
+```powershell
+python -m pfkb html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
+```
 
-HTML 版优先支持这些交互：
+- `knowledge-index.html`：给人按标签、内容类型、分析方式和复核状态逐层浏览知识库。
+- `human-review.html`：仍在后续计划中，用来处理待整理文件，并把选择写回本地决策记录。
+
+后续可回写的 HTML 审阅页优先支持这些交互：
 
 - 允许本地 LLM 查看这个文件。
 - 在云端策略已经显式授权的前提下，允许云端 LLM 查看这个文件。

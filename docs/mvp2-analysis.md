@@ -15,6 +15,7 @@ MVP2 的目标是把已经提取出的正文转成第一版知识索引。
 - 生成标题、基础摘要、标签、内容类型、字数、行数。
 - 标记分析方式、规则置信度、是否需要人工复核、复核原因。
 - 输出机器可读 JSONL 和人类可读 Markdown 索引。
+- 可继续通过 `pfkb html` 生成中文 HTML 资产浏览页。
 
 ## 使用顺序
 
@@ -29,6 +30,12 @@ python -m pfkb extract --inventory data/first-scan/inventory.sqlite --out data/f
 
 ```powershell
 python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
+```
+
+如果要给人类浏览这批知识索引，可以继续生成 HTML：
+
+```powershell
+python -m pfkb html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
 
 如果要模拟“API/LLM 已经接入”的语义理解结果，可以保留规则版输出，再跑一份 `codex-mock`：
@@ -60,6 +67,10 @@ python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/f
 - `knowledge-index.md`：人类可读的知识索引，按内容类型分组。
 - `tag-index.md`：人类可读的标签索引。
 - `analysis-comparison.md`：当传入 `--compare-to` 时生成，用来对比规则粗标签和语义理解结果。
+
+`pfkb html` 会额外读取上面的 JSONL，生成：
+
+- `knowledge-index.html`：中文资产浏览页，支持标签树、搜索、筛选、文件列表和详情面板。
 
 ## 当前标签能力
 
