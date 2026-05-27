@@ -73,6 +73,9 @@ def test_analyze_extract_records_generates_summary_tags_and_counts(tmp_path):
     assert "scan" in result.tags
     assert result.content_type == "docs"
     assert result.word_count > 0
+    assert result.analysis_method == "rules"
+    assert result.confidence > 0
+    assert result.review_reason.startswith("rules_")
 
 
 def test_classification_and_tags_use_path_and_content():
@@ -129,12 +132,17 @@ def test_analyze_cli_writes_knowledge_index_outputs(tmp_path):
     records = [json.loads(line) for line in index_jsonl.read_text(encoding="utf-8").splitlines()]
     assert len(records) == 1
     assert records[0]["title"] == "Demo Knowledge Base"
+    assert records[0]["analysis_method"] == "rules"
+    assert "confidence" in records[0]
+    assert "needs_human_review" in records[0]
     assert "docs" in records[0]["tags"]
     assert "extract" in records[0]["tags"]
     index_text = index_md.read_text(encoding="utf-8")
     assert "# 知识索引" in index_text
     assert "当前版本是全本地规则版" in index_text
     assert "原始路径" in index_text
+    assert "需要人工复核" in index_text
+    assert "规则置信度" in index_text
     assert "摘要：" in index_text
     assert "failed.md" not in index_text
     assert "# 标签索引" in tag_index.read_text(encoding="utf-8")

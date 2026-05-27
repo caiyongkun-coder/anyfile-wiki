@@ -7,9 +7,11 @@ import sys
 
 from .analyze import analyze_extract_records, analysis_stats, write_analysis_outputs
 from .inventory import Inventory
+from .llm_config import describe_llm_config, load_llm_config
 from .parse import extract_jobs, plan_parse_jobs_from_records, write_manifest
 from .policy import PolicyEngine, describe_privacy_policy, load_policy
 from .report import write_access_log, write_scan_plan
+from .review import build_review_items, load_analysis_manifest, review_stats, write_review_outputs
 from .roots import describe_roots_config, discover_candidate_roots, load_roots_config
 from .scan import scan_paths
 
@@ -89,6 +91,20 @@ def build_parser() -> ArgumentParser:
     analyze.add_argument("--max-text-chars", type=int, default=200_000, help="Maximum text chars to inspect per file")
     analyze.add_argument("--json", action="store_true", help="Print analyzed records as JSON")
     analyze.set_defaults(func=cmd_analyze)
+
+    llm = subparsers.add_parser("llm", help="Explain the LLM/privacy policy config")
+    llm.add_argument("--llm-config", default="configs/llm.example.yaml", help="LLM policy YAML")
+    llm.add_argument("--json", action="store_true", help="Emit JSON")
+    llm.set_defaults(func=cmd_llm)
+
+    review = subparsers.add_parser("review", help="Write a human review list for files needing manual attention")
+    review.add_argument("--inventory", default="data/inventory.sqlite", help="SQLite inventory path")
+    review.add_argument("--analysis", default=None, help="Optional analysis-manifest.jsonl path")
+    review.add_argument("--llm-config", default="configs/llm.example.yaml", help="LLM policy YAML")
+    review.add_argument("--out", default="data/review", help="Review output directory")
+    review.add_argument("--limit", type=int, default=1000, help="Maximum inventory files to inspect")
+    review.add_argument("--json", action="store_true", help="Print review items as JSON")
+    review.set_defaults(func=cmd_review)
 
     return parser
 
@@ -314,6 +330,49 @@ def cmd_analyze(args) -> int:
     return 0 if not any(result.status == "error" for result in results) else 1
 
 
+def cmd_llm(args) -> int:
+    llm_path = Path(args.llm_config)
+    if not llm_path.exists():
+        print(f"llm config not found: {llm_path}", file=sys.stderr)
+        return 2
+    summary = describe_llm_config(load_llm_config(llm_path))
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
+    print(_format_llm_summary(summary))
+    return 0
+
+
+def cmd_review(args) -> int:
+    inventory_path = Path(args.inventory)
+    if not inventory_path.exists():
+        print(f"inventory not found: {inventory_path}", file=sys.stderr)
+        return 2
+    llm_config = load_llm_config(_optional_path(args.llm_config))
+    analysis_records = load_analysis_manifest(args.analysis)
+    with Inventory(inventory_path) as inventory:
+        files = inventory.list_files(limit=args.limit, include_dirs=False)
+        latest_extracts = inventory.latest_extracts_by_path()
+    items = build_review_items(
+        files,
+        latest_extracts,
+        analysis_records=analysis_records,
+        llm_config=llm_config,
+    )
+    outputs = write_review_outputs(items, args.out)
+    stats = review_stats(items)
+    if args.json:
+        print(json.dumps([item.__dict__ for item in items], ensure_ascii=False, indent=2))
+        return 0
+    print(f"files_inspected: {len(files)}")
+    print(f"review_items: {len(items)}")
+    for name, path in outputs.items():
+        print(f"{name}: {path}")
+    for category, count in sorted(stats.items()):
+        print(f"{category}: {count}")
+    return 0
+
+
 def _optional_path(value: str | None) -> str | None:
     if not value:
         return None
@@ -392,6 +451,29 @@ def _format_roots_summary(summary: dict) -> str:
             lines.append(f"  description: {root.get('description')}")
         if root.get("recommended_policy"):
             lines.append(f"  recommended_policy: {root.get('recommended_policy')}")
+    return "\n".join(lines)
+
+
+def _format_llm_summary(summary: dict) -> str:
+    lines = [
+        "llm_config:",
+        f"- version: {summary.get('version')}",
+        f"- purpose: {summary.get('purpose')}",
+        f"- mode: {summary.get('mode')}",
+        f"- provider: {summary.get('provider')}",
+        f"- local_enabled: {str(summary.get('local_enabled')).lower()}",
+        f"- cloud_enabled: {str(summary.get('cloud_enabled')).lower()}",
+        f"- cloud_risk_acknowledged: {str(summary.get('cloud_risk_acknowledged')).lower()}",
+        f"- cloud_allowed_paths: {len(summary.get('cloud_allowed_paths') or [])}",
+    ]
+    privacy_notes = summary.get("privacy_notes") or []
+    if privacy_notes:
+        lines.append("privacy_notes:")
+        lines.extend(f"- {note}" for note in privacy_notes)
+    setup_questions = summary.get("setup_questions") or []
+    if setup_questions:
+        lines.append("setup_questions:")
+        lines.extend(f"- {question}" for question in setup_questions)
     return "\n".join(lines)
 
 

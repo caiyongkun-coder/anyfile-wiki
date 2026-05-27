@@ -33,6 +33,8 @@ PFKB is meant to be a knowledge governance layer over the local filesystem, not 
 - `pfkb extracts` for persisted extraction results and status counts.
 - Incremental extraction: unchanged successful sources are skipped by default, with `--force` and `--retry-failed` available.
 - `pfkb analyze` for local rule-based summaries, tags, and knowledge indexes from extracted text.
+- `pfkb llm` for explaining local/cloud model policy and cloud-read boundaries.
+- `pfkb review` for human review lists covering unreadable, unsupported, low-confidence, or cloud-unauthorized files.
 - Direct text extraction is supported; MarkItDown is an optional parser dependency.
 
 ## Quick Start
@@ -53,6 +55,7 @@ python -m pfkb list --inventory data/smoke/inventory.sqlite
 python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
+python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
 ```
 
 In MVP0, `pfkb scan` is a dry-run: it creates an access plan and an inventory, but it does not read file content, summarize files, or write vectors.
@@ -100,6 +103,12 @@ python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
 
 # Build a local rule-based knowledge index
 python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
+
+# Explain local/cloud LLM privacy policy
+python -m pfkb llm --llm-config configs/llm.example.yaml
+
+# Write the human review list
+python -m pfkb review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
 ```
 
 ## Project Layout
@@ -107,6 +116,7 @@ python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/f
 ```text
 configs/
   roots.example.yaml         Example recommended scan roots
+  llm.example.yaml           Example LLM and cloud-read policy
   excludes.default.yaml      Default exclude rules
   privacy.example.yaml       Example user privacy policy
 docs/
@@ -114,6 +124,8 @@ docs/
   privacy-setup.md           Privacy setup and agent-readable policy guide
   roots-setup.md             Recommended scan roots setup guide
   mvp0-usage.md              MVP0 usage guide
+  mvp2-analysis.md           MVP2 content analysis guide
+  mvp2-review-llm.md         MVP2.1 LLM policy and human review guide
 src/pfkb/
   policy.py                  Privacy policy engine
   scan.py                    Dry-run scanner
@@ -122,6 +134,8 @@ src/pfkb/
   roots.py                   Suggested scan root discovery
   parse.py                   Privacy-gated extraction pipeline
   analyze.py                 Local rule-based summaries, tags, and knowledge indexes
+  review.py                  Human review list builder
+  llm_config.py              LLM policy config parser
   cli.py                     CLI entry point
 tests/
   *.py                       pytest specs
@@ -132,6 +146,7 @@ tests/
 - MVP0: privacy policy, default excludes, dry-run scanning, inventory, reports.
 - MVP1: integrate MarkItDown for common document parsing and write an extraction manifest.
 - MVP2: local summaries, tags, topics, projects, and file-type classification.
+- MVP2.1: LLM policy, cloud authorization boundaries, and human review lists.
 - MVP3: human-browsable asset map: tag tree, topic pages, project pages, file details.
 - MVP4: agent skill / MCP integration for OpenClaw, Hermes, Codex, and similar agents.
 - MVP5: safe cleanup assistant: duplicates, archive candidates, delete candidates, reversible manifests.
@@ -171,6 +186,7 @@ Current tests cover:
 - SQLite persistence and querying for extraction results.
 - Incremental extraction, forced reruns, and failed/skipped retry strategy.
 - Local rule-based content analysis, tags, and knowledge index outputs.
+- LLM policy explanation, cloud authorization boundaries, and human review list outputs.
 
 ## Docs
 
@@ -182,6 +198,7 @@ Current tests cover:
 - [MVP0 Usage Guide](docs/mvp0-usage.md)
 - [MVP1 Extraction Guide](docs/mvp1-extraction.md)
 - [MVP2 Content Analysis Guide](docs/mvp2-analysis.md)
+- [MVP2.1 LLM Policy and Human Review Guide](docs/mvp2-review-llm.md)
 
 ## License
 

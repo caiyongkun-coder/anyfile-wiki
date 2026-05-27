@@ -7,6 +7,7 @@ MVP2 的目标是把已经提取出的正文转成第一版知识索引。
 - 从 `inventory.sqlite` 读取最新可分析的提取结果。
 - 只分析 `ok` 或 `up_to_date` 且有文本产物的记录。
 - 生成标题、基础摘要、标签、内容类型、字数、行数。
+- 标记分析方式、规则置信度、是否需要人工复核、复核原因。
 - 输出机器可读 JSONL 和人类可读 Markdown 索引。
 
 ## 使用顺序
@@ -41,3 +42,20 @@ python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/f
 - 主题标签：`privacy`、`scan`、`extract`、`analysis`、`inventory`、`configuration`、`roots`、`cli`、`tests`、`docs`、`license`、`roadmap`。
 
 后续可以在这一层之后接本地 LLM，提升摘要质量、抽取主题层级、识别项目/人物/时间线，并生成 wiki 页面。
+
+## 复核字段
+
+规则版分析不会假装自己已经真正理解文件。每条结果会包含：
+
+- `analysis_method`：当前是 `rules`。
+- `confidence`：规则置信度，最高也不会当作大模型理解。
+- `needs_human_review`：是否建议人工或本地 LLM 复核。
+- `review_reason`：复核原因，例如 `rules_only_needs_semantic_review`。
+
+可以继续运行：
+
+```powershell
+python -m pfkb review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
+```
+
+生成 `human-review.md`，把规则版低置信度、无法读取、无法提取、云端未授权的文件列出来。

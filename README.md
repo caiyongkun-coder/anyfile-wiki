@@ -53,6 +53,7 @@ python -m pfkb list --inventory data/smoke/inventory.sqlite
 python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
 python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
+python -m pfkb review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
 ```
 
 `pfkb scan` 在 MVP0 中是 dry-run：它只生成访问计划和 inventory，不读取正文、不做摘要、不写入向量库。
@@ -100,6 +101,12 @@ python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
 
 # 生成本地规则版知识索引
 python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
+
+# 查看 LLM/云端隐私策略
+python -m pfkb llm --llm-config configs/llm.example.yaml
+
+# 生成人工待整理清单
+python -m pfkb review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
 ```
 
 ## 项目结构
@@ -182,6 +189,7 @@ python -m pytest -q
 - [MVP0 使用说明](docs/mvp0-usage.md)
 - [MVP1 提取说明](docs/mvp1-extraction.md)
 - [MVP2 内容分析说明](docs/mvp2-analysis.md)
+- [MVP2.1 LLM 策略与人工待整理清单](docs/mvp2-review-llm.md)
 
 ## 许可证
 

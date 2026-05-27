@@ -66,6 +66,10 @@ class AnalysisResult:
     line_count: int
     analyzed_at: str
     source_extract_status: str
+    analysis_method: str = "rules"
+    confidence: float = 0.0
+    needs_human_review: bool = True
+    review_reason: str = "rules_only_no_llm"
     error: str | None = None
 
 
@@ -100,6 +104,7 @@ def analyze_extract_record(
         tags = infer_tags(source_path, text, content_type)
         title = infer_title(source_path, text)
         summary = summarize_text(text, title=title)
+        confidence, review_reason = assess_rules_confidence(text, summary, tags, content_type)
         return AnalysisResult(
             path=source_path,
             output_path=str(output_path),
@@ -117,6 +122,10 @@ def analyze_extract_record(
             line_count=text.count("\n") + (1 if text else 0),
             analyzed_at=analyzed_at,
             source_extract_status=status,
+            analysis_method="rules",
+            confidence=confidence,
+            needs_human_review=confidence < 0.65,
+            review_reason=review_reason,
         )
     except Exception as exc:  # noqa: BLE001 - analysis manifest should capture failures.
         return AnalysisResult(
@@ -136,6 +145,10 @@ def analyze_extract_record(
             line_count=0,
             analyzed_at=analyzed_at,
             source_extract_status=status,
+            analysis_method="rules",
+            confidence=0.0,
+            needs_human_review=True,
+            review_reason="analysis_error",
             error=str(exc),
         )
 
@@ -201,6 +214,33 @@ def count_words(text: str) -> int:
     return cjk_chars + latin_words
 
 
+def assess_rules_confidence(
+    text: str,
+    summary: str,
+    tags: list[str],
+    content_type: str,
+) -> tuple[float, str]:
+    score = 0.25
+    if summary:
+        score += 0.15
+    if len(summary) >= 80:
+        score += 0.1
+    if len(tags) >= 3:
+        score += 0.1
+    if len(tags) >= 6:
+        score += 0.1
+    if content_type in {"code", "config", "test", "docs"}:
+        score += 0.05
+    if len(text) >= 1000:
+        score += 0.05
+    score = min(round(score, 2), 0.75)
+    if score < 0.4:
+        return score, "rules_low_signal"
+    if score < 0.65:
+        return score, "rules_only_needs_semantic_review"
+    return score, "rules_only_optional_review"
+
+
 def write_analysis_outputs(results: list[AnalysisResult], output_dir: str | Path) -> dict[str, Path]:
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -247,12 +287,16 @@ def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) ->
             "- 高频标签："
             + ", ".join(f"`{tag}` {count}" for tag, count in tag_counts.most_common(10))
         )
+        lines.append(
+            f"- 需要人工复核：{sum(1 for result in ok_results if result.needs_human_review)}"
+        )
 
     for content_type in sorted(by_type):
         lines.extend(["", f"## {_content_type_label(content_type)}", ""])
         for result in sorted(by_type[content_type], key=lambda item: item.path.lower()):
             tags = " ".join(f"`{tag}`" for tag in result.tags)
             embedding = "是" if result.embedding_allowed else "否"
+            human_review = "是" if result.needs_human_review else "否"
             lines.extend(
                 [
                     f"### {result.title}",
@@ -262,6 +306,9 @@ def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) ->
                     f"- 标签：{tags}",
                     f"- 估算字数：{result.word_count}",
                     f"- 允许向量化：{embedding}",
+                    f"- 分析方式：`{result.analysis_method}`",
+                    f"- 规则置信度：{result.confidence:.2f}",
+                    f"- 需要人工复核：{human_review}（{result.review_reason}）",
                     "",
                     "摘要：",
                     "",
