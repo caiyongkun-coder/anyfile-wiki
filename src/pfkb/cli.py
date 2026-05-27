@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from .inventory import Inventory
+from .parse import build_parse_jobs_from_records, extract_jobs, write_manifest
 from .policy import PolicyEngine
 from .report import write_access_log, write_scan_plan
 from .roots import discover_candidate_roots
@@ -50,6 +51,13 @@ def build_parser() -> ArgumentParser:
     roots.add_argument("--include-missing", action="store_true", help="Also show roots that do not exist")
     roots.add_argument("--json", action="store_true", help="Emit JSON")
     roots.set_defaults(func=cmd_roots)
+
+    extract = subparsers.add_parser("extract", help="Extract content for inventory records allowed by policy")
+    extract.add_argument("--inventory", default="data/inventory.sqlite", help="SQLite inventory path")
+    extract.add_argument("--out", default="data/extract", help="Extraction output directory")
+    extract.add_argument("--limit", type=int, default=100, help="Maximum inventory records to inspect")
+    extract.add_argument("--manifest", default=None, help="Manifest JSONL path")
+    extract.set_defaults(func=cmd_extract)
 
     return parser
 
@@ -166,6 +174,28 @@ def cmd_roots(args) -> int:
         status = "exists" if root.exists else "missing"
         print(f"{root.name}\t{status}\t{root.path}")
     return 0
+
+
+def cmd_extract(args) -> int:
+    inventory_path = Path(args.inventory)
+    if not inventory_path.exists():
+        print(f"inventory not found: {inventory_path}", file=sys.stderr)
+        return 2
+    output_dir = Path(args.out)
+    manifest_path = Path(args.manifest) if args.manifest else output_dir / "extract-manifest.jsonl"
+    with Inventory(inventory_path) as inventory:
+        records = inventory.list_files(limit=args.limit, include_dirs=False)
+    jobs = build_parse_jobs_from_records(records)
+    results = extract_jobs(jobs, output_dir)
+    write_manifest(results, manifest_path)
+    counts: dict[str, int] = {}
+    for result in results:
+        counts[result.status] = counts.get(result.status, 0) + 1
+    print(f"jobs: {len(jobs)}")
+    print(f"manifest: {manifest_path}")
+    for status, count in sorted(counts.items()):
+        print(f"{status}: {count}")
+    return 0 if not any(result.status == "error" for result in results) else 1
 
 
 def _optional_path(value: str | None) -> str | None:

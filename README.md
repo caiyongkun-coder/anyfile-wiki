@@ -28,7 +28,8 @@ PFKB 想做的是本地文件系统上的“知识治理层”，而不是又一
 - dry-run 扫描只遍历路径和元数据，不读取文件正文。
 - 输出 `scan-plan.md`、`access-log.jsonl` 和 `inventory.sqlite`。
 - 提供 `pfkb status`、`pfkb list`、`pfkb show`、`pfkb roots`。
-- 已有解析任务骨架，后续 MarkItDown / Docling 只能处理策略允许读取的文件。
+- 提供 `pfkb extract`，只对策略允许读取的文件执行提取。
+- 支持直接文本提取；MarkItDown 是可选解析依赖。
 
 ## 快速开始
 
@@ -45,6 +46,7 @@ New-Item -ItemType Directory -Force "$env:TEMP\pfkb-mvp0-smoke" | Out-Null
 python -m pfkb scan "$env:TEMP\pfkb-mvp0-smoke" --privacy configs/privacy.yaml --out data/smoke --max-entries 50
 python -m pfkb status --inventory data/smoke/inventory.sqlite --sources
 python -m pfkb list --inventory data/smoke/inventory.sqlite
+python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 ```
 
 `pfkb scan` 在 MVP0 中是 dry-run：它只生成访问计划和 inventory，不读取正文、不做摘要、不写入向量库。
@@ -69,6 +71,9 @@ python -m pfkb list --inventory data/first-scan/inventory.sqlite --policy deny
 
 # 查看单个路径的策略命中原因
 python -m pfkb show "C:\path\to\file.md" --inventory data/first-scan/inventory.sqlite
+
+# 对允许读取的文件执行提取
+python -m pfkb extract --inventory data/first-scan/inventory.sqlite --out data/first-extract
 ```
 
 ## 项目结构
@@ -86,7 +91,7 @@ src/pfkb/
   inventory.py               SQLite inventory
   report.py                  scan-plan 和 access-log 输出
   roots.py                   推荐扫描目录发现
-  parse.py                   解析任务骨架
+  parse.py                   隐私门控后的提取管线
   cli.py                     CLI 入口
 tests/
   *.py                       pytest 规格测试
@@ -95,7 +100,7 @@ tests/
 ## 路线图
 
 - MVP0：隐私策略、默认排除、dry-run、inventory、扫描报告。
-- MVP1：接入 MarkItDown，解析常见文档格式。
+- MVP1：接入 MarkItDown，解析常见文档格式，并输出 extraction manifest。
 - MVP2：本地摘要、标签、主题、项目和文件类型分类。
 - MVP3：人类可浏览资产地图：标签树、主题页、项目页、文件详情页。
 - MVP4：agent skill / MCP 集成，支持 OpenClaw、Hermes、Codex 使用本地知识。
@@ -131,6 +136,7 @@ python -m pytest -q
 - CLI `status/list/show`。
 - 推荐扫描目录发现。
 - 解析任务策略门控。
+- 直接文本提取和 extraction manifest。
 
 ## 文档
 

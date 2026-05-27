@@ -28,7 +28,8 @@ PFKB is meant to be a knowledge governance layer over the local filesystem, not 
 - Dry-run scanning that only traverses paths and metadata; it does not read file bodies.
 - Outputs `scan-plan.md`, `access-log.jsonl`, and `inventory.sqlite`.
 - CLI commands: `pfkb status`, `pfkb list`, `pfkb show`, `pfkb roots`.
-- Parser job scaffolding: future MarkItDown / Docling jobs can only be created for files that pass the privacy policy.
+- `pfkb extract` for files allowed by policy.
+- Direct text extraction is supported; MarkItDown is an optional parser dependency.
 
 ## Quick Start
 
@@ -45,6 +46,7 @@ New-Item -ItemType Directory -Force "$env:TEMP\pfkb-mvp0-smoke" | Out-Null
 python -m pfkb scan "$env:TEMP\pfkb-mvp0-smoke" --privacy configs/privacy.yaml --out data/smoke --max-entries 50
 python -m pfkb status --inventory data/smoke/inventory.sqlite --sources
 python -m pfkb list --inventory data/smoke/inventory.sqlite
+python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 ```
 
 In MVP0, `pfkb scan` is a dry-run: it creates an access plan and an inventory, but it does not read file content, summarize files, or write vectors.
@@ -69,6 +71,9 @@ python -m pfkb list --inventory data/first-scan/inventory.sqlite --policy deny
 
 # Explain the policy decision for one path
 python -m pfkb show "C:\path\to\file.md" --inventory data/first-scan/inventory.sqlite
+
+# Extract content from files allowed by policy
+python -m pfkb extract --inventory data/first-scan/inventory.sqlite --out data/first-extract
 ```
 
 ## Project Layout
@@ -86,7 +91,7 @@ src/pfkb/
   inventory.py               SQLite inventory
   report.py                  scan-plan and access-log output
   roots.py                   Suggested scan root discovery
-  parse.py                   Parser job scaffolding
+  parse.py                   Privacy-gated extraction pipeline
   cli.py                     CLI entry point
 tests/
   *.py                       pytest specs
@@ -95,7 +100,7 @@ tests/
 ## Roadmap
 
 - MVP0: privacy policy, default excludes, dry-run scanning, inventory, reports.
-- MVP1: integrate MarkItDown for common document parsing.
+- MVP1: integrate MarkItDown for common document parsing and write an extraction manifest.
 - MVP2: local summaries, tags, topics, projects, and file-type classification.
 - MVP3: human-browsable asset map: tag tree, topic pages, project pages, file details.
 - MVP4: agent skill / MCP integration for OpenClaw, Hermes, Codex, and similar agents.
@@ -131,6 +136,7 @@ Current tests cover:
 - CLI `status/list/show`.
 - Suggested scan root discovery.
 - Parser-job policy gating.
+- Direct text extraction and extraction manifests.
 
 ## Docs
 

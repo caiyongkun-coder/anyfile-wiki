@@ -24,6 +24,9 @@ dependencies = [
 dev = [
   "pytest>=8.0",
 ]
+parse = [
+  "markitdown>=0.1.0",
+]
 
 [project.scripts]
 pfkb = "pfkb.cli:main"
