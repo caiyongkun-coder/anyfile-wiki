@@ -32,6 +32,7 @@ PFKB is meant to be a knowledge governance layer over the local filesystem, not 
 - `pfkb extract` for files allowed by policy.
 - `pfkb extracts` for persisted extraction results and status counts.
 - Incremental extraction: unchanged successful sources are skipped by default, with `--force` and `--retry-failed` available.
+- `pfkb analyze` for local rule-based summaries, tags, and knowledge indexes from extracted text.
 - Direct text extraction is supported; MarkItDown is an optional parser dependency.
 
 ## Quick Start
@@ -51,6 +52,7 @@ python -m pfkb status --inventory data/smoke/inventory.sqlite --sources
 python -m pfkb list --inventory data/smoke/inventory.sqlite
 python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
+python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
 ```
 
 In MVP0, `pfkb scan` is a dry-run: it creates an access plan and an inventory, but it does not read file content, summarize files, or write vectors.
@@ -95,6 +97,9 @@ python -m pfkb extract --inventory data/first-scan/inventory.sqlite --out data/f
 
 # Show extraction status
 python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
+
+# Build a local rule-based knowledge index
+python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
 ```
 
 ## Project Layout
@@ -116,6 +121,7 @@ src/pfkb/
   report.py                  scan-plan and access-log output
   roots.py                   Suggested scan root discovery
   parse.py                   Privacy-gated extraction pipeline
+  analyze.py                 Local rule-based summaries, tags, and knowledge indexes
   cli.py                     CLI entry point
 tests/
   *.py                       pytest specs
@@ -164,6 +170,7 @@ Current tests cover:
 - Direct text extraction and extraction manifests.
 - SQLite persistence and querying for extraction results.
 - Incremental extraction, forced reruns, and failed/skipped retry strategy.
+- Local rule-based content analysis, tags, and knowledge index outputs.
 
 ## Docs
 
@@ -174,6 +181,7 @@ Current tests cover:
 - [Recommended Scan Roots Setup Guide](docs/roots-setup.md)
 - [MVP0 Usage Guide](docs/mvp0-usage.md)
 - [MVP1 Extraction Guide](docs/mvp1-extraction.md)
+- [MVP2 Content Analysis Guide](docs/mvp2-analysis.md)
 
 ## License
 

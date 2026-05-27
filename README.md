@@ -32,6 +32,7 @@ PFKB 想做的是本地文件系统上的“知识治理层”，而不是又一
 - 提供 `pfkb extract`，只对策略允许读取的文件执行提取。
 - 提供 `pfkb extracts`，查看持久化的提取结果和状态统计。
 - 支持增量提取：默认跳过源文件未变化的成功项，支持 `--force` 和 `--retry-failed`。
+- 提供 `pfkb analyze`，基于已提取文本生成本地规则版摘要、标签和知识索引。
 - 支持直接文本提取；MarkItDown 是可选解析依赖。
 
 ## 快速开始
@@ -51,6 +52,7 @@ python -m pfkb status --inventory data/smoke/inventory.sqlite --sources
 python -m pfkb list --inventory data/smoke/inventory.sqlite
 python -m pfkb extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
 python -m pfkb extracts --inventory data/smoke/inventory.sqlite --stats
+python -m pfkb analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
 ```
 
 `pfkb scan` 在 MVP0 中是 dry-run：它只生成访问计划和 inventory，不读取正文、不做摘要、不写入向量库。
@@ -95,6 +97,9 @@ python -m pfkb extract --inventory data/first-scan/inventory.sqlite --out data/f
 
 # 查看提取状态
 python -m pfkb extracts --inventory data/first-scan/inventory.sqlite --stats
+
+# 生成本地规则版知识索引
+python -m pfkb analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
 ```
 
 ## 项目结构
@@ -116,6 +121,7 @@ src/pfkb/
   report.py                  scan-plan 和 access-log 输出
   roots.py                   推荐扫描目录发现
   parse.py                   隐私门控后的提取管线
+  analyze.py                 本地规则版摘要、标签和知识索引
   cli.py                     CLI 入口
 tests/
   *.py                       pytest 规格测试
@@ -164,6 +170,7 @@ python -m pytest -q
 - 直接文本提取和 extraction manifest。
 - extraction result SQLite 持久化和查询。
 - 增量提取、强制重跑和失败重试策略。
+- 本地规则版内容分析、标签和知识索引输出。
 
 ## 文档
 
@@ -174,6 +181,7 @@ python -m pytest -q
 - [推荐扫描目录配置说明](docs/roots-setup.md)
 - [MVP0 使用说明](docs/mvp0-usage.md)
 - [MVP1 提取说明](docs/mvp1-extraction.md)
+- [MVP2 内容分析说明](docs/mvp2-analysis.md)
 
 ## 许可证
 

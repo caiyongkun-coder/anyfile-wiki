@@ -299,6 +299,22 @@ class Inventory:
         ).fetchall()
         return {str(row["path"]): _extract_row_to_dict(row) for row in rows}
 
+    def latest_analyzable_extracts_by_path(self) -> dict[str, dict]:
+        rows = self.connection.execute(
+            """
+            SELECT e.*
+            FROM extractions e
+            JOIN (
+                SELECT path, MAX(id) AS max_id
+                FROM extractions
+                WHERE status IN ('ok', 'up_to_date')
+                  AND output_path IS NOT NULL
+                GROUP BY path
+            ) latest ON latest.max_id = e.id
+            """
+        ).fetchall()
+        return {str(row["path"]): _extract_row_to_dict(row) for row in rows}
+
     def _ensure_extraction_columns(self) -> None:
         rows = self.connection.execute("PRAGMA table_info(extractions)").fetchall()
         columns = {str(row["name"]) for row in rows}

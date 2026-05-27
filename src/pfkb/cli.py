@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sys
 
+from .analyze import analyze_extract_records, analysis_stats, write_analysis_outputs
 from .inventory import Inventory
 from .parse import extract_jobs, plan_parse_jobs_from_records, write_manifest
 from .policy import PolicyEngine, describe_privacy_policy, load_policy
@@ -80,6 +81,14 @@ def build_parser() -> ArgumentParser:
     extracts.add_argument("--stats", action="store_true", help="Show status counts (default)")
     extracts.add_argument("--no-stats", action="store_true", help="Hide status counts")
     extracts.set_defaults(func=cmd_extracts)
+
+    analyze = subparsers.add_parser("analyze", help="Build a local rule-based knowledge index from extracted text")
+    analyze.add_argument("--inventory", default="data/inventory.sqlite", help="SQLite inventory path")
+    analyze.add_argument("--out", default="data/analyze", help="Analysis output directory")
+    analyze.add_argument("--limit", type=int, default=100, help="Maximum extracted records to analyze")
+    analyze.add_argument("--max-text-chars", type=int, default=200_000, help="Maximum text chars to inspect per file")
+    analyze.add_argument("--json", action="store_true", help="Print analyzed records as JSON")
+    analyze.set_defaults(func=cmd_analyze)
 
     return parser
 
@@ -280,6 +289,29 @@ def cmd_extracts(args) -> int:
             f"{record['status']}\t{record['parser']}\t{record['path']}\t{record.get('output_path') or ''}"
         )
     return 0
+
+
+def cmd_analyze(args) -> int:
+    inventory_path = Path(args.inventory)
+    if not inventory_path.exists():
+        print(f"inventory not found: {inventory_path}", file=sys.stderr)
+        return 2
+    with Inventory(inventory_path) as inventory:
+        latest = inventory.latest_analyzable_extracts_by_path()
+    records = sorted(latest.values(), key=lambda record: str(record.get("path", "")))[: args.limit]
+    results = analyze_extract_records(records, max_text_chars=args.max_text_chars)
+    outputs = write_analysis_outputs(results, args.out)
+    stats = analysis_stats(results)
+    if args.json:
+        print(json.dumps([result.__dict__ for result in results], ensure_ascii=False, indent=2))
+        return 0
+    print(f"inputs: {len(records)}")
+    print(f"analyzed: {len(results)}")
+    for name, path in outputs.items():
+        print(f"{name}: {path}")
+    for status, count in sorted(stats.items()):
+        print(f"{status}: {count}")
+    return 0 if not any(result.status == "error" for result in results) else 1
 
 
 def _optional_path(value: str | None) -> str | None:
