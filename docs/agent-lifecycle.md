@@ -78,9 +78,7 @@ Agent 根据隐私配置和推荐扫描目录，扫描允许处理的路径。
 anyfile-wiki scan "$env:USERPROFILE\Documents" --privacy configs/privacy.yaml --out data/first-scan --max-entries 500
 ```
 
-这里需要补充一个“进度配置/运行状态”设计，因为个人电脑文件很多，单次任务可能无法完成。
-
-建议后续增加类似：
+当前已经增加 `anyfile-wiki run` 作为日常空闲运行入口。它会在运行目录保存：
 
 ```text
 data/runs/<run-id>/run-state.json
@@ -95,11 +93,23 @@ data/runs/<run-id>/run-state.json
 - 上次中断原因。
 - 下次继续的位置。
 
+当前命令示例：
+
+```powershell
+anyfile-wiki run "$env:USERPROFILE\Documents" --privacy configs/privacy.yaml --out data/daily-run --max-scan-entries 500 --extract-limit 100 --analyze-limit 100
+anyfile-wiki run --out data/daily-run
+anyfile-wiki run --out data/daily-run --status
+```
+
+首次运行需要给出 root。之后重复执行 `anyfile-wiki run --out data/daily-run`，系统会读取 `run-state.json`，继续下一个未完成阶段或下一个路径游标。
+
 这样 agent 在空闲窗口很短时也能安全推进：
 
 ```text
-本次处理 500 个文件 -> 保存进度 -> 下次空闲继续
+本次处理 500 个文件 -> 保存 run-state.json -> 下次空闲继续
 ```
+
+第一版使用稳定排序后的路径游标推进扫描、提取和分析。它先解决“不要每次从零开始”的问题；后续还可以继续增强为更细的目录级游标、时间预算和异常恢复策略。
 
 ### 2. 提取、分析和生成人类页面
 
@@ -265,7 +275,7 @@ agent 读取 review-decisions.jsonl 并继续
 
 ## 当前建议的下一步
 
-1. 设计并实现 `run-state.json`，支持日常空闲扫描的进度保存和断点续跑。
-2. 让 agent 读取 `next-actions.jsonl` 后自动触发本地 LLM 复核、忽略候选汇总和人工标签覆盖。
+1. 让 agent 读取 `next-actions.jsonl` 后自动触发本地 LLM 复核、忽略候选汇总和人工标签覆盖。
+2. 扩展 `run-state.json`：加入时间预算、失败重试策略和更细的目录级扫描游标。
 3. 扩展 `human-review.html` 的批量批复和标签编辑能力。
 4. 再确认 agent 最终消费的知识库形态：JSONL、Markdown/wiki、MCP/GNO，或组合。

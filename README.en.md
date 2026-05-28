@@ -29,6 +29,7 @@ AnyFile Wiki is meant to be a knowledge governance layer over the local filesyst
 - Dry-run scanning that only traverses paths and metadata; it does not read file bodies.
 - Outputs `scan-plan.md`, `access-log.jsonl`, and `inventory.sqlite`.
 - CLI commands: `anyfile-wiki privacy`, `anyfile-wiki status`, `anyfile-wiki list`, `anyfile-wiki show`, `anyfile-wiki roots`, `anyfile-wiki tags`.
+- `anyfile-wiki run` for resumable daily runs with `run-state.json`, progressing scan, extraction, analysis, review outputs, and the HTML asset browser in small steps.
 - `anyfile-wiki extract` for files allowed by policy.
 - `anyfile-wiki extracts` for persisted extraction results and status counts.
 - Incremental extraction: unchanged successful sources are skipped by default, with `--force` and `--retry-failed` available.
@@ -64,6 +65,9 @@ anyfile-wiki analyze --inventory data/smoke/inventory.sqlite --out data/smoke-an
 anyfile-wiki analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
 anyfile-wiki review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
 anyfile-wiki html --analysis data/smoke-analyze/knowledge-index.jsonl --out data/smoke-html
+
+# Daily idle-run entry point: repeat the same command and it continues from run-state.json
+anyfile-wiki run "$env:TEMP\anyfile-wiki-mvp0-smoke" --out data/smoke-run --max-scan-entries 50 --extract-limit 20 --analyze-limit 20
 
 # After opening data/smoke-review/human-review.html and exporting review-decisions.jsonl:
 # anyfile-wiki decisions --decisions data/smoke-review/review-decisions.jsonl --out data/smoke-review/decisions-summary.md --actions-out data/smoke-review/next-actions.jsonl --plan-out data/smoke-review/decision-plan.md
@@ -137,6 +141,11 @@ anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/fir
 # Write the human review list
 anyfile-wiki review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
 
+# Resumable daily run: pass roots on the first run, then repeat without roots to continue
+anyfile-wiki run "$env:USERPROFILE\Documents" --privacy configs/privacy.yaml --out data/daily-run --max-scan-entries 500 --extract-limit 100 --analyze-limit 100
+anyfile-wiki run --out data/daily-run
+anyfile-wiki run --out data/daily-run --status
+
 # Read decisions exported from human-review.html
 anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --out data/first-review/decisions-summary.md --actions-out data/first-review/next-actions.jsonl --plan-out data/first-review/decision-plan.md
 
@@ -168,6 +177,7 @@ src/anyfile_wiki/
   scan.py                    Dry-run scanner
   inventory.py               SQLite inventory
   report.py                  scan-plan and access-log output
+  run_state.py               Daily run state and resume support
   roots.py                   Suggested scan root discovery
   tags.py                    Tag taxonomy parser
   parse.py                   Privacy-gated extraction pipeline

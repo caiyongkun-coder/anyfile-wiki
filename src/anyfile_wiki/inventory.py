@@ -173,6 +173,34 @@ class Inventory:
         rows = self.connection.execute(sql, params).fetchall()
         return [_row_to_dict(row) for row in rows]
 
+    def list_files_after(
+        self,
+        *,
+        after_path: str | Path | None = None,
+        limit: int = 50,
+        access_policy: str | None = None,
+        include_dirs: bool = True,
+    ) -> list[dict]:
+        where = ["exists_now = 1"]
+        params: dict[str, object] = {"limit": limit}
+        if after_path:
+            where.append("path > :after_path")
+            params["after_path"] = str(after_path)
+        if access_policy:
+            where.append("access_policy = :access_policy")
+            params["access_policy"] = access_policy
+        if not include_dirs:
+            where.append("is_dir = 0")
+        sql = f"""
+            SELECT *
+            FROM files
+            WHERE {' AND '.join(where)}
+            ORDER BY path ASC
+            LIMIT :limit
+        """
+        rows = self.connection.execute(sql, params).fetchall()
+        return [_row_to_dict(row) for row in rows]
+
     def get_file(self, path: str | Path) -> dict | None:
         candidate = str(path)
         normalized = str(Path(path)).replace("\\", "/")

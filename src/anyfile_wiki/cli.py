@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
+from collections import Counter
+from dataclasses import asdict
 import json
 from pathlib import Path
 import sys
 
 from .analyze import (
+    AnalysisResult,
     analyze_extract_records,
     analysis_stats,
     write_analysis_comparison_md,
@@ -30,6 +33,16 @@ from .policy import PolicyEngine, describe_privacy_policy, load_policy
 from .report import write_access_log, write_scan_plan
 from .review import build_review_items, load_analysis_manifest, review_stats, write_review_outputs
 from .roots import describe_roots_config, discover_candidate_roots, load_roots_config
+from .run_state import (
+    STAGE_ORDER,
+    format_run_state,
+    load_run_state,
+    mark_stage_result,
+    mark_stage_started,
+    new_run_state,
+    next_stage,
+    save_run_state,
+)
 from .scan import scan_paths
 from .tags import describe_tags_config, filter_tags, load_tags_config, tag_definitions
 
@@ -151,6 +164,31 @@ def build_parser() -> ArgumentParser:
     decisions.add_argument("--plan-out", default=None, help="Optional Markdown decision plan path")
     decisions.add_argument("--json", action="store_true", help="Emit JSON")
     decisions.set_defaults(func=cmd_decisions)
+
+    run = subparsers.add_parser("run", help="Run one resumable daily processing step with run-state.json")
+    run.add_argument("roots", nargs="*", help="Root directories or files. Required when creating a new run state")
+    run.add_argument("--state", default=None, help="run-state.json path. Defaults to <out>/run-state.json")
+    run.add_argument("--out", default="data/run", help="Run output directory")
+    run.add_argument("--privacy", default="configs/privacy.example.yaml", help="Privacy policy YAML")
+    run.add_argument("--excludes", default="configs/excludes.default.yaml", help="Default excludes YAML")
+    run.add_argument("--inventory", default=None, help="SQLite inventory path")
+    run.add_argument("--max-scan-entries", type=int, default=500, help="Maximum scan entries for this run step")
+    run.add_argument("--extract-limit", type=int, default=100, help="Maximum inventory records to inspect in this run step")
+    run.add_argument("--analyze-limit", type=int, default=100, help="Maximum extracted records to analyze in this run step")
+    run.add_argument("--review-limit", type=int, default=1000, help="Maximum inventory files to inspect when writing review outputs")
+    run.add_argument(
+        "--method",
+        choices=["rules", "codex-mock", "local-llm", "cloud-llm"],
+        default="rules",
+        help="Analysis method for a new run state",
+    )
+    run.add_argument("--llm-config", default="configs/llm.example.yaml", help="LLM policy YAML")
+    run.add_argument("--tags-config", default="configs/tags.example.yaml", help="Tag taxonomy YAML")
+    run.add_argument("--follow-symlinks", action="store_true", help="Follow symlinked directories for a new run state")
+    run.add_argument("--stage", choices=["auto", *STAGE_ORDER], default="auto", help="Stage to run. Defaults to the next incomplete stage")
+    run.add_argument("--status", action="store_true", help="Only print current run-state.json")
+    run.add_argument("--json", action="store_true", help="Emit JSON")
+    run.set_defaults(func=cmd_run)
 
     html = subparsers.add_parser("html", help="Build a local HTML asset browser from a knowledge index")
     html.add_argument("--analysis", default="data/analyze/knowledge-index.jsonl", help="knowledge-index.jsonl or analysis-manifest.jsonl path")
@@ -501,6 +539,60 @@ def cmd_decisions(args) -> int:
     return 0
 
 
+def cmd_run(args) -> int:
+    state_path = Path(args.state) if args.state else Path(args.out) / "run-state.json"
+    if args.status:
+        if not state_path.exists():
+            print(f"run state not found: {state_path}", file=sys.stderr)
+            return 2
+        state = load_run_state(state_path)
+        _print_run_state(state, json_output=args.json)
+        return 0
+
+    if state_path.exists():
+        state = load_run_state(state_path)
+    else:
+        if not args.roots:
+            print("roots are required when creating a new run state", file=sys.stderr)
+            return 2
+        state = new_run_state(
+            roots=[str(root) for root in args.roots],
+            out_dir=args.out,
+            privacy=args.privacy,
+            excludes=args.excludes,
+            inventory=args.inventory,
+            follow_symlinks=bool(args.follow_symlinks),
+            analysis_method=args.method,
+            llm_config=args.llm_config,
+            tags_config=args.tags_config,
+        )
+
+    stage = args.stage if args.stage != "auto" else next_stage(state)
+    if stage is None:
+        state["status"] = "complete"
+        state["current_stage"] = "done"
+        save_run_state(state, state_path)
+        _print_run_state(state, json_output=args.json)
+        return 0
+
+    try:
+        result = _run_one_stage(state, stage, args)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    save_run_state(state, state_path)
+    if args.json:
+        print(json.dumps({"state": state, "result": result}, ensure_ascii=False, indent=2))
+        return 0
+    print(format_run_state(state))
+    print("outputs:")
+    print(f"- run_state: {state_path}")
+    for name, path in (result.get("outputs") or {}).items():
+        print(f"- {name}: {path}")
+    return 0
+
+
 def cmd_html(args) -> int:
     analysis_path = Path(args.analysis)
     if not analysis_path.exists():
@@ -518,6 +610,259 @@ def cmd_html(args) -> int:
     for name, path in outputs.items():
         print(f"{name}: {path}")
     return 0
+
+
+def _run_one_stage(state: dict, stage: str, args) -> dict:
+    mark_stage_started(state, stage)
+    if stage == "scan":
+        return _run_scan_stage(state, args)
+    if stage == "extract":
+        return _run_extract_stage(state, args)
+    if stage == "analyze":
+        return _run_analyze_stage(state, args)
+    if stage == "review":
+        return _run_review_stage(state, args)
+    if stage == "html":
+        return _run_html_stage(state)
+    raise ValueError(f"unsupported run stage: {stage}")
+
+
+def _run_scan_stage(state: dict, args) -> dict:
+    paths = state["paths"]
+    config = state["config"]
+    stage_state = state["stages"]["scan"]
+    chunk = int(stage_state.get("chunks") or 0) + 1
+    scan_dir = Path(paths["scan_dir"])
+    scan_dir.mkdir(parents=True, exist_ok=True)
+    scan_plan = scan_dir / f"scan-plan-{chunk:04d}.md"
+    access_log = scan_dir / f"access-log-{chunk:04d}.jsonl"
+    limit = max(1, int(args.max_scan_entries))
+    policy = PolicyEngine.from_files(_optional_path(config.get("privacy")), _optional_path(config.get("excludes")))
+    result = scan_paths(
+        state.get("roots") or [],
+        policy,
+        follow_symlinks=bool(config.get("follow_symlinks")),
+        max_entries=limit,
+        resume_after=stage_state.get("cursor_path"),
+        sort_entries=True,
+    )
+    write_scan_plan(result, scan_plan)
+    write_access_log(result, access_log)
+    with Inventory(paths["inventory"]) as inventory:
+        stored_count = inventory.upsert_entries(result.entries)
+    cursor_path = result.entries[-1].path if result.entries else stage_state.get("cursor_path")
+    status = "paused" if len(result.entries) >= limit else "complete"
+    stats = result.stats.as_dict()
+    stats["stored"] = stored_count
+    stats["errors"] = len(result.errors)
+    outputs = {
+        "scan_plan": str(scan_plan),
+        "access_log": str(access_log),
+        "inventory": str(paths["inventory"]),
+    }
+    message = f"scanned {len(result.entries)} entries"
+    mark_stage_result(
+        state,
+        "scan",
+        status=status,
+        message=message,
+        stats=stats,
+        outputs=outputs,
+        cursor_path=cursor_path,
+    )
+    return {"stage": "scan", "status": status, "message": message, "stats": stats, "outputs": outputs}
+
+
+def _run_extract_stage(state: dict, args) -> dict:
+    paths = state["paths"]
+    stage_state = state["stages"]["extract"]
+    chunk = int(stage_state.get("chunks") or 0) + 1
+    limit = max(1, int(args.extract_limit))
+    extract_dir = Path(paths["extract_dir"])
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    chunk_manifest = extract_dir / f"extract-manifest-{chunk:04d}.jsonl"
+    aggregate_manifest = Path(paths["extract_manifest"])
+    if chunk == 1 and aggregate_manifest.exists():
+        aggregate_manifest.unlink()
+    with Inventory(paths["inventory"]) as inventory:
+        records = inventory.list_files_after(
+            after_path=stage_state.get("cursor_path"),
+            limit=limit,
+            include_dirs=False,
+        )
+        latest_success = inventory.latest_success_by_path()
+        latest = inventory.latest_extracts_by_path()
+        plan = plan_parse_jobs_from_records(
+            records,
+            latest_success_by_path=latest_success,
+            latest_by_path=latest,
+        )
+        extracted = extract_jobs(plan.jobs, extract_dir)
+        results = [*plan.skipped, *extracted]
+        write_manifest(results, chunk_manifest)
+        _append_jsonl_records([asdict(result) for result in results], aggregate_manifest)
+        stored_count = inventory.add_extract_results(results)
+    cursor_path = str(records[-1]["path"]) if records else stage_state.get("cursor_path")
+    status = "paused" if len(records) >= limit else "complete"
+    counts = Counter(result.status for result in results)
+    stats = {
+        "records_inspected": len(records),
+        "jobs": len(plan.jobs),
+        "skipped": len(plan.skipped),
+        "stored": stored_count,
+        "by_status": dict(counts),
+    }
+    outputs = {
+        "chunk_manifest": str(chunk_manifest),
+        "extract_manifest": str(aggregate_manifest),
+    }
+    message = f"inspected {len(records)} inventory records; extracted {len(extracted)}"
+    mark_stage_result(
+        state,
+        "extract",
+        status=status,
+        message=message,
+        stats=stats,
+        outputs=outputs,
+        cursor_path=cursor_path,
+    )
+    return {"stage": "extract", "status": status, "message": message, "stats": stats, "outputs": outputs}
+
+
+def _run_analyze_stage(state: dict, args) -> dict:
+    paths = state["paths"]
+    config = state["config"]
+    stage_state = state["stages"]["analyze"]
+    chunk = int(stage_state.get("chunks") or 0) + 1
+    limit = max(1, int(args.analyze_limit))
+    analyze_dir = Path(paths["analyze_dir"])
+    analyze_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = Path(paths["analysis_manifest"])
+    index_path = Path(paths["knowledge_index"])
+    if chunk == 1:
+        for stale in (manifest_path, index_path):
+            if stale.exists():
+                stale.unlink()
+    with Inventory(paths["inventory"]) as inventory:
+        latest = inventory.latest_analyzable_extracts_by_path()
+    cursor = str(stage_state.get("cursor_path") or "")
+    records = [
+        record
+        for record in sorted(latest.values(), key=lambda item: str(item.get("path", "")))
+        if not cursor or str(record.get("path", "")) > cursor
+    ][:limit]
+    method = str(config.get("analysis_method") or "rules")
+    llm_config = load_llm_config(_optional_path(config.get("llm_config"))) if method in {"local-llm", "cloud-llm"} else None
+    tag_config = load_tags_config(_optional_path(config.get("tags_config")))
+    allowed_tags = [definition.id for definition in tag_definitions(tag_config)]
+    results = analyze_extract_records(
+        records,
+        analysis_method=method,
+        llm_config=llm_config,
+        allowed_tags=allowed_tags,
+    )
+    result_dicts = [asdict(result) for result in results]
+    _append_jsonl_records(result_dicts, manifest_path)
+    _append_jsonl_records([record for record in result_dicts if record.get("status") == "ok"], index_path)
+    cursor_path = str(records[-1]["path"]) if records else stage_state.get("cursor_path")
+    status = "paused" if len(records) >= limit else "complete"
+    outputs = {
+        "analysis_manifest": str(manifest_path),
+        "knowledge_index": str(index_path),
+    }
+    if status == "complete":
+        all_results = _load_analysis_result_objects(manifest_path)
+        final_outputs = write_analysis_outputs(all_results, analyze_dir)
+        outputs.update({name: str(path) for name, path in final_outputs.items()})
+    stats = {"records_analyzed": len(records), "by_status": analysis_stats(results)}
+    message = f"analyzed {len(records)} extracted records"
+    mark_stage_result(
+        state,
+        "analyze",
+        status=status,
+        message=message,
+        stats=stats,
+        outputs=outputs,
+        cursor_path=cursor_path,
+    )
+    return {"stage": "analyze", "status": status, "message": message, "stats": stats, "outputs": outputs}
+
+
+def _run_review_stage(state: dict, args) -> dict:
+    paths = state["paths"]
+    config = state["config"]
+    analysis_records = load_analysis_manifest(paths["analysis_manifest"])
+    llm_config = load_llm_config(_optional_path(config.get("llm_config")))
+    with Inventory(paths["inventory"]) as inventory:
+        files = inventory.list_files(limit=max(1, int(args.review_limit)), include_dirs=False)
+        latest_extracts = inventory.latest_extracts_by_path()
+    items = build_review_items(
+        files,
+        latest_extracts,
+        analysis_records=analysis_records,
+        llm_config=llm_config,
+    )
+    outputs = write_review_outputs(items, paths["review_dir"])
+    stats = {"review_items": len(items), "by_category": review_stats(items)}
+    output_strings = {name: str(path) for name, path in outputs.items()}
+    message = f"wrote {len(items)} review items"
+    mark_stage_result(
+        state,
+        "review",
+        status="complete",
+        message=message,
+        stats=stats,
+        outputs=output_strings,
+    )
+    return {"stage": "review", "status": "complete", "message": message, "stats": stats, "outputs": output_strings}
+
+
+def _run_html_stage(state: dict) -> dict:
+    paths = state["paths"]
+    config = state["config"]
+    tags_config = load_tags_config(_optional_path(config.get("tags_config")))
+    records = load_browser_records(paths["knowledge_index"])
+    outputs = write_knowledge_browser_html(
+        records,
+        paths["html_dir"],
+        tags_config=tags_config,
+        source_path=Path(paths["knowledge_index"]),
+    )
+    stats = {"records": len(records)}
+    output_strings = {name: str(path) for name, path in outputs.items()}
+    message = f"wrote HTML browser for {len(records)} records"
+    mark_stage_result(
+        state,
+        "html",
+        status="complete",
+        message=message,
+        stats=stats,
+        outputs=output_strings,
+    )
+    return {"stage": "html", "status": "complete", "message": message, "stats": stats, "outputs": output_strings}
+
+
+def _append_jsonl_records(records: list[dict], path: str | Path) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not records:
+        output.touch(exist_ok=True)
+        return
+    with output.open("a", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def _load_analysis_result_objects(path: str | Path) -> list[AnalysisResult]:
+    records = _load_jsonl(path)
+    return [AnalysisResult(**record) for record in records]
+
+
+def _print_run_state(state: dict, *, json_output: bool) -> None:
+    if json_output:
+        print(json.dumps(state, ensure_ascii=False, indent=2))
+    else:
+        print(format_run_state(state))
 
 
 def _optional_path(value: str | None) -> str | None:
