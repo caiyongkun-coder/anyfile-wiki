@@ -2,7 +2,7 @@
 
 MVP3 的第一步是让人类能直接浏览知识库，而不是只能读很长的 Markdown。
 
-当前已经实现 `anyfile-wiki html`：它读取 `knowledge-index.jsonl` 或 `analysis-manifest.jsonl` 中 `status: ok` 的分析结果，生成一个可离线打开的 `knowledge-index.html`。页面固定文案尽量采用中英双语，后端字段和标签 key 继续保留英文，方便 agent、脚本和后续工具稳定读取。
+当前已经实现 `anyfile-wiki html`：它读取 `knowledge-index.jsonl`、`analysis-manifest.jsonl` 或批复后的 `asset-index.jsonl` 中 `status: ok` 的结果，生成一个可离线打开的 `knowledge-index.html`。页面固定文案尽量采用中英双语，后端字段和标签 key 继续保留英文，方便 agent、脚本和后续工具稳定读取。
 
 ## 使用命令
 
@@ -20,6 +20,12 @@ anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/fir
 anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
 
+如果已经完成人工批复，推荐先生成最终资产索引，再刷新 HTML：
+
+```powershell
+anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --actions data/first-review/next-actions.jsonl --review-items data/first-review/human-review.jsonl --out data/first-assets --html-out data/first-html
+```
+
 输出文件：
 
 ```text
@@ -35,7 +41,8 @@ data/first-html/knowledge-index.html
 - 左侧标签树：按内容类型、分析方式、复核状态和标签维度筛选。
 - 中间文件列表：默认分页显示，可选择每页 10、15 或 30 条；每条显示标题、路径、摘要、标签和复核状态。
 - 右侧文件详情：显示摘要、标签、分析方式、置信度、向量许可、解析器、字数、理解要点、规则版保留结果和模型说明。
-- 支持 `knowledge-index.jsonl` 和 `analysis-manifest.jsonl`；如果传入 manifest，会自动过滤掉 `skipped` 和 `error`。
+- 支持 `knowledge-index.jsonl`、`analysis-manifest.jsonl` 和 `asset-index.jsonl`；如果传入 manifest，会自动过滤掉 `skipped` 和 `error`。
+- 批复后的资产页会显示资产状态、人工批复、后续动作、二次确认、人工标签和隐私冲突提示。
 
 ## 设计取舍
 
@@ -48,7 +55,7 @@ data/first-html/knowledge-index.html
 ## 后续计划
 
 - 扩展 `human-review.html` 的批量批复、标签编辑和决策复查能力。
-- 让 agent 读取 `next-actions.jsonl` 后自动触发本地 LLM 复核、忽略候选汇总或隐私配置修改建议。
+- 让 agent 读取 `asset-index.jsonl` 中的 `local_llm_queue` 后自动触发本地 LLM 复核，并把复核结果继续回写资产索引。
 - 增加主题页、项目页、来源应用页和时间线。
 - 增加可选的本地搜索索引，让大规模知识库仍然能快速筛选。
 - 继续保留 Markdown 和 JSONL 输出，HTML 只是更适合人类浏览的一层。

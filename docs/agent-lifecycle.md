@@ -17,6 +17,7 @@ AnyFile Wiki 要形成一个本地优先的数据资产管理闭环：
 - `knowledge-index.html`：让人类浏览已经整理出的数据资产。
 - `human-review.html`：让人类批复系统不确定或不能自动处理的文件。
 - `review-decisions.jsonl`：让 agent 读取人类批复结果，并继续后续流程。
+- `asset-index.jsonl`：让 agent 读取已经合并人工批复后的最终资产状态。
 
 ## 初始化阶段
 
@@ -129,6 +130,7 @@ anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data
 - `knowledge-index.html`：资产浏览页。
 - `human-review.md` 和 `human-review.jsonl`：需要人类复核的清单。
 - `human-review.html`：人类批复页面，可导出 `review-decisions.jsonl`。
+- `asset-index.jsonl`：批复动作应用后的最终资产索引，适合 agent 优先读取。
 
 ### 3. 人类批复，Agent 继续
 
@@ -157,6 +159,18 @@ anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --ou
 - `decisions-summary.md`：批复摘要。
 - `next-actions.jsonl`：agent 可读取的后续动作清单。
 - `decision-plan.md`：人类和 agent 可共同审阅的执行计划。
+
+把批复动作应用回资产层：
+
+```powershell
+anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --actions data/first-review/next-actions.jsonl --review-items data/first-review/human-review.jsonl --out data/first-assets --html-out data/first-html
+```
+
+当前会生成：
+
+- `asset-index.jsonl`：agent 优先读取的最终资产索引。
+- `asset-index.md`：给人和 agent 都能快速理解的资产状态摘要。
+- `knowledge-index.html`：刷新后的资产浏览页，包含资产状态、人工批复和后续动作。
 
 建议批复文件：
 
@@ -189,7 +203,7 @@ data/first-review/review-decisions.jsonl
 - 重新提取或重新分析。
 - 记录人工修正标签。
 
-当前实现已经先把这些动作落成计划文件，不会直接修改源文件或隐私配置。尤其是云端 LLM 相关决策，只会成为“云端授权候选”，必须等配置显式授权路径和风险确认后才能执行。
+当前实现已经能把这些动作落成计划文件，并应用到资产索引里的 `asset_status`、`review_action`、`manual_tags` 等字段，不会直接修改源文件或隐私配置。尤其是云端 LLM 相关决策，只会成为“云端授权候选”；如果来源是隐私策略阻止读取的文件，会标记为云端授权冲突，必须等配置显式授权路径和风险确认后才能执行。
 
 ### 4. 生成 Agent 可用知识资产
 
@@ -197,7 +211,8 @@ data/first-review/review-decisions.jsonl
 
 当前候选输出包括：
 
-- `knowledge-index.jsonl`：结构化索引，适合 agent 和程序读取。
+- `asset-index.jsonl`：合并人工批复后的最终结构化索引，适合 agent 优先读取。
+- `knowledge-index.jsonl`：分析阶段结构化索引，适合作为资产索引的输入和回退。
 - `analysis-manifest.jsonl`：完整分析记录，包括 skipped/error。
 - `knowledge-index.md`：人类和 agent 都能直接阅读的知识索引。
 - `tag-index.md`：按标签组织的 Markdown 索引。
@@ -275,7 +290,7 @@ agent 读取 review-decisions.jsonl 并继续
 
 ## 当前建议的下一步
 
-1. 让 agent 读取 `next-actions.jsonl` 后自动触发本地 LLM 复核、忽略候选汇总和人工标签覆盖。
+1. 让 agent 读取 `asset-index.jsonl` 中的 `local_llm_queue` 后自动触发本地 LLM 复核，并把结果再次回写资产索引。
 2. 扩展 `run-state.json`：加入时间预算、失败重试策略和更细的目录级扫描游标。
 3. 扩展 `human-review.html` 的批量批复和标签编辑能力。
 4. 再确认 agent 最终消费的知识库形态：JSONL、Markdown/wiki、MCP/GNO，或组合。

@@ -8,6 +8,7 @@ import json
 import secrets
 import threading
 
+from .assets import apply_review_outputs_for_run
 from .decisions import (
     build_decision_actions,
     load_review_decisions,
@@ -43,12 +44,14 @@ def write_review_decisions_from_records(records: list[dict[str, Any]], review_di
     write_decisions_summary_md(decisions, summary_path)
     write_next_actions_jsonl(actions, actions_path)
     write_decision_plan_md(actions, plan_path)
-    return {
+    outputs = {
         "review_decisions": str(decisions_path),
         "decisions_summary": str(summary_path),
         "next_actions": str(actions_path),
         "decision_plan": str(plan_path),
     }
+    outputs.update(apply_review_outputs_for_run(root))
+    return outputs
 
 
 def make_review_server(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from anyfile_wiki.cli import main as cli_main
 from anyfile_wiki.inventory import Inventory
+from anyfile_wiki.run_state import new_run_state, save_run_state
 
 
 def _run_cli(argv: list[str]) -> tuple[int, str, str]:
@@ -187,3 +188,45 @@ def test_run_stage_argument_runs_named_stage_from_existing_state_without_roots(t
     assert payload["state"]["roots"] == [str(source)]
     assert payload["state"]["stages"]["scan"]["status"] == "complete"
     assert payload["state"]["stages"]["scan"]["chunks"] == 2
+
+
+def test_run_html_stage_infers_asset_index_for_legacy_state(tmp_path):
+    out_dir = tmp_path / "run"
+    state = new_run_state(
+        roots=[str(tmp_path / "source")],
+        out_dir=out_dir,
+        privacy="configs/privacy.example.yaml",
+        excludes="configs/excludes.default.yaml",
+    )
+    del state["paths"]["asset_index"]
+    del state["paths"]["asset_dir"]
+    state_path = out_dir / "run-state.json"
+    knowledge_path = out_dir / "analyze" / "knowledge-index.jsonl"
+    asset_path = out_dir / "assets" / "asset-index.jsonl"
+    knowledge_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    knowledge_path.write_text(
+        json.dumps({"path": "C:/raw.md", "status": "ok", "title": "raw", "tags": []}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    asset_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"path": "C:/asset-a.md", "status": "ok", "title": "asset a", "tags": [], "asset_status": "confirmed"}, ensure_ascii=False),
+                json.dumps({"path": "C:/asset-b.md", "status": "ok", "title": "asset b", "tags": [], "asset_status": "deferred"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    save_run_state(state, state_path)
+
+    code, stdout, stderr = _run_cli(["run", "--state", str(state_path), "--out", str(out_dir), "--stage", "html"])
+
+    assert code == 0, stderr
+    assert "wrote HTML browser for 2 records" in stdout
+    html = (out_dir / "html" / "knowledge-index.html").read_text(encoding="utf-8")
+    assert "asset-index.jsonl" in html
+    assert "asset a" in html
+    assert "asset b" in html
+    assert "raw" not in html

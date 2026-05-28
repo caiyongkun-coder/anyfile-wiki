@@ -39,6 +39,7 @@ AnyFile Wiki is meant to be a knowledge governance layer over the local filesyst
 - `anyfile-wiki review` for Markdown, JSONL, and `human-review.html` review outputs covering unreadable, unsupported, low-confidence, or cloud-unauthorized files.
 - `anyfile-wiki review-server` for a local `127.0.0.1` review service where the page submits decisions directly to local files.
 - `anyfile-wiki decisions` for reading `review-decisions.jsonl` exported from the HTML review page, then writing a summary, `next-actions.jsonl`, and `decision-plan.md`.
+- `anyfile-wiki assets` for applying human review actions back into the final `asset-index.jsonl` and refreshing the human HTML browser.
 - `anyfile-wiki html` for turning `knowledge-index.jsonl` into a local Chinese/English asset browser with a tag tree, pagination, filters, search, and file details.
 - Direct text extraction is supported; MarkItDown is an optional parser dependency.
 
@@ -72,6 +73,7 @@ anyfile-wiki run "$env:TEMP\anyfile-wiki-mvp0-smoke" --out data/smoke-run --max-
 
 # After opening data/smoke-review/human-review.html and exporting review-decisions.jsonl:
 # anyfile-wiki decisions --decisions data/smoke-review/review-decisions.jsonl --out data/smoke-review/decisions-summary.md --actions-out data/smoke-review/next-actions.jsonl --plan-out data/smoke-review/decision-plan.md
+# anyfile-wiki assets --analysis data/smoke-analyze/knowledge-index.jsonl --actions data/smoke-review/next-actions.jsonl --review-items data/smoke-review/human-review.jsonl --out data/smoke-assets --html-out data/smoke-html
 ```
 
 If you do not install the package and only want to run the CLI temporarily from the source tree, set `PYTHONPATH` in the current PowerShell session first, then run the package module directly:
@@ -153,6 +155,9 @@ anyfile-wiki run --out data/daily-run --status
 # Read decisions exported from human-review.html
 anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --out data/first-review/decisions-summary.md --actions-out data/first-review/next-actions.jsonl --plan-out data/first-review/decision-plan.md
 
+# Apply review decisions into the final asset index and refresh the human HTML browser
+anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --actions data/first-review/next-actions.jsonl --review-items data/first-review/human-review.jsonl --out data/first-assets --html-out data/first-html
+
 # Build the Chinese local HTML asset browser
 anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
@@ -189,6 +194,7 @@ src/anyfile_wiki/
   llm_client.py              Local/cloud LLM API client
   review.py                  Human review list builder
   decisions.py               Human decisions and agent follow-up action plans
+  assets.py                  Final asset index merger after human review
   llm_config.py              LLM policy config parser
   html.py                    Local HTML asset browser generator
   cli.py                     CLI entry point
@@ -202,7 +208,7 @@ tests/
 - MVP1: integrate MarkItDown for common document parsing and write an extraction manifest.
 - MVP2: local summaries, tags, topics, projects, and file-type classification.
 - MVP2.1: LLM policy, cloud authorization boundaries, and human review lists.
-- MVP3: human-browsable asset map. The first static HTML asset browser is implemented; topic pages, project pages, and review writeback are next.
+- MVP3: human-browsable asset map. The HTML asset browser, human review page, local submit service, and review writeback to `asset-index.jsonl` are now implemented.
 - MVP4: agent skill / MCP integration for OpenClaw, Hermes, Codex, and similar agents.
 - MVP5: safe cleanup assistant: duplicates, archive candidates, delete candidates, reversible manifests.
 - MVP6: app personal-data adapters: browser bookmarks, chat exports, email, note apps, and more.
@@ -244,6 +250,7 @@ Current tests cover:
 - LLM policy explanation, cloud authorization boundaries, and human review list outputs.
 - Real LLM/API analysis entry points, cloud authorization gates, and JSON response parsing.
 - Static HTML asset browser generation, Chinese UI text, and CLI output.
+- Human review actions applied into `asset-index.jsonl`, plus review-server submit refreshing asset JSON/HTML.
 
 ## Docs
 

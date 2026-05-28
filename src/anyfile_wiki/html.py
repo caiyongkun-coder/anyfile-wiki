@@ -64,6 +64,8 @@ def _normalize_record(record: dict[str, Any]) -> dict[str, Any]:
     tags = _string_list(record.get("tags"))
     rule_tags = _string_list(record.get("rule_tags"))
     key_points = _string_list(record.get("key_points"))
+    manual_tags = _string_list(record.get("manual_tags"))
+    accepted_tags = _string_list(record.get("accepted_tags"))
     return {
         "path": _text(record.get("path")),
         "output_path": _text(record.get("output_path")),
@@ -91,6 +93,26 @@ def _normalize_record(record: dict[str, Any]) -> dict[str, Any]:
         "key_points": key_points,
         "model_notes": _text(record.get("model_notes")),
         "error": _text(record.get("error")),
+        "asset_schema_version": _int(record.get("asset_schema_version")),
+        "asset_generated_at": _text(record.get("asset_generated_at")),
+        "asset_source": _text(record.get("asset_source")),
+        "asset_status": _text(record.get("asset_status") or "active"),
+        "asset_status_label": _text(record.get("asset_status_label")),
+        "review_decision": _text(record.get("review_decision")),
+        "review_action": _text(record.get("review_action")),
+        "review_action_title": _text(record.get("review_action_title")),
+        "review_category": _text(record.get("review_category")),
+        "review_severity": _text(record.get("review_severity")),
+        "review_privacy_level": _text(record.get("review_privacy_level")),
+        "review_requires_confirmation": bool(record.get("review_requires_confirmation")),
+        "review_note": _text(record.get("review_note")),
+        "review_decided_at": _text(record.get("review_decided_at")),
+        "review_next_step": _text(record.get("review_next_step")),
+        "review_warning": _text(record.get("review_warning")),
+        "manual_tags": manual_tags,
+        "accepted_tags": accepted_tags,
+        "review_source_reason": _text(record.get("review_source_reason")),
+        "review_source_action": _text(record.get("review_source_action")),
     }
 
 
@@ -120,12 +142,14 @@ def _stats_payload(records: list[dict[str, Any]]) -> dict[str, Any]:
     tag_counts = Counter(tag for record in records for tag in record["tags"])
     type_counts = Counter(record["content_type"] for record in records)
     method_counts = Counter(record["analysis_method"] for record in records)
+    asset_status_counts = Counter(record["asset_status"] for record in records)
     return {
         "record_count": len(records),
         "needs_review_count": sum(1 for record in records if record["needs_human_review"]),
         "tag_counts": dict(tag_counts.most_common()),
         "content_type_counts": dict(type_counts.most_common()),
         "analysis_method_counts": dict(method_counts.most_common()),
+        "asset_status_counts": dict(asset_status_counts.most_common()),
     }
 
 
@@ -594,6 +618,16 @@ _HTML_TEMPLATE = r"""<!doctype html>
       min-width: 0;
     }
 
+    .row-badges {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      max-width: 46%;
+    }
+
     .row-title {
       margin: 0;
       min-width: 0;
@@ -625,6 +659,21 @@ _HTML_TEMPLATE = r"""<!doctype html>
     .badge.ok {
       background: #e8f6ef;
       color: var(--green);
+    }
+
+    .badge.warning {
+      background: #fff4e5;
+      color: var(--amber);
+    }
+
+    .badge.danger {
+      background: #fee4e2;
+      color: var(--red);
+    }
+
+    .badge.neutral {
+      background: #eef2f7;
+      color: #344054;
     }
 
     .row-path {
@@ -908,11 +957,24 @@ _HTML_TEMPLATE = r"""<!doctype html>
         rules: "本地规则",
         "codex-mock": "模拟语义",
         "local-llm": "本地 LLM",
-        "cloud-llm": "云端 LLM"
+        "cloud-llm": "云端 LLM",
+        "human-review": "人工复核"
       },
       review: {
         true: "需要复核",
         false: "暂不复核"
+      },
+      assetStatus: {
+        active: "正常资产 / Active",
+        confirmed: "人工确认 / Confirmed",
+        manual_reviewed: "人工整理 / Manual reviewed",
+        local_llm_queue: "本地 LLM 队列 / Local LLM queue",
+        cloud_candidate: "云端候选 / Cloud candidate",
+        cloud_authorization_conflict: "云端授权冲突 / Cloud conflict",
+        ignore_candidate: "忽略候选 / Ignore candidate",
+        deferred: "稍后复核 / Deferred",
+        private_metadata_only: "仅保留私有元数据 / Private",
+        review_required: "需要复核 / Review"
       }
     };
 
@@ -974,6 +1036,18 @@ _HTML_TEMPLATE = r"""<!doctype html>
       return labels.review[String(value)] || String(value);
     }
 
+    function assetStatusLabel(value) {
+      return labels.assetStatus[String(value)] || String(value || "active");
+    }
+
+    function assetStatusClass(value, needsConfirmation) {
+      const status = String(value || "active");
+      if (status === "cloud_authorization_conflict") return "danger";
+      if (needsConfirmation || ["local_llm_queue", "cloud_candidate", "ignore_candidate", "deferred", "review_required"].includes(status)) return "warning";
+      if (["confirmed", "manual_reviewed", "private_metadata_only"].includes(status)) return "ok";
+      return "neutral";
+    }
+
     function tagBadge(tag) {
       const meta = tagInfo(tag);
       return `<span class="tag" title="${escapeHtml(meta.en)}">${escapeHtml(meta.zh)} <code>${escapeHtml(meta.id)}</code></span>`;
@@ -1024,9 +1098,16 @@ _HTML_TEMPLATE = r"""<!doctype html>
         record.summary,
         record.content_type,
         record.analysis_method,
+        record.asset_status,
+        record.review_decision,
+        record.review_action,
+        record.review_category,
         record.review_reason,
+        record.review_next_step,
+        record.review_warning,
         ...(record.tags || []),
-        ...(record.rule_tags || [])
+        ...(record.rule_tags || []),
+        ...(record.manual_tags || [])
       ].join(" "));
     }
 
@@ -1035,6 +1116,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
       if (filter.kind === "content_type") return record.content_type === filter.value;
       if (filter.kind === "analysis_method") return record.analysis_method === filter.value;
       if (filter.kind === "review") return String(Boolean(record.needs_human_review)) === filter.value;
+      if (filter.kind === "asset_status") return String(record.asset_status || "active") === filter.value;
       return true;
     }
 
@@ -1060,7 +1142,9 @@ _HTML_TEMPLATE = r"""<!doctype html>
         return (b.confidence || 0) - (a.confidence || 0) || normalize(a.title).localeCompare(normalize(b.title));
       }
       if (state.sort === "review") {
-        return Number(Boolean(b.needs_human_review)) - Number(Boolean(a.needs_human_review)) || normalize(a.title).localeCompare(normalize(b.title));
+        return Number(Boolean(b.review_requires_confirmation)) - Number(Boolean(a.review_requires_confirmation))
+          || Number(Boolean(b.needs_human_review)) - Number(Boolean(a.needs_human_review))
+          || normalize(a.title).localeCompare(normalize(b.title));
       }
       if (state.sort === "path") {
         return normalize(a.path).localeCompare(normalize(b.path));
@@ -1138,11 +1222,13 @@ _HTML_TEMPLATE = r"""<!doctype html>
       const typeCounts = new CounterLike();
       const methodCounts = new CounterLike();
       const reviewCounts = new CounterLike();
+      const assetStatusCounts = new CounterLike();
       for (const record of allRecords) {
         for (const tag of record.tags || []) tagCounts.add(tag);
         typeCounts.add(record.content_type || "unknown");
         methodCounts.add(record.analysis_method || "rules");
         reviewCounts.add(String(Boolean(record.needs_human_review)));
+        assetStatusCounts.add(record.asset_status || "active");
       }
 
       const dimensions = new Map();
@@ -1154,6 +1240,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
 
       const sections = [];
       sections.push(renderSimpleFacet("内容类型 / Content type", "content_type", typeCounts.entries(), contentTypeLabel));
+      sections.push(renderSimpleFacet("资产状态 / Asset status", "asset_status", assetStatusCounts.entries(), assetStatusLabel));
       sections.push(renderSimpleFacet("分析方式 / Analysis method", "analysis_method", methodCounts.entries(), methodLabel));
       sections.push(renderSimpleFacet("复核状态 / Review status", "review", reviewCounts.entries(), reviewLabel));
       for (const [dimension, tags] of [...dimensions.entries()].sort((a, b) => dimensionLabel(a[0]).localeCompare(dimensionLabel(b[0])))) {
@@ -1259,12 +1346,17 @@ _HTML_TEMPLATE = r"""<!doctype html>
         const selected = record.path === state.selectedPath ? " is-selected" : "";
         const reviewClass = record.needs_human_review ? "review" : "ok";
         const reviewText = record.needs_human_review ? "需要复核 / Review" : "已分析 / Done";
+        const statusClass = assetStatusClass(record.asset_status, record.review_requires_confirmation);
+        const statusText = assetStatusLabel(record.asset_status);
         const tags = (record.tags || []).slice(0, 5).map(tagBadge).join("");
         return `<li>
           <button class="row${selected}" type="button" data-path="${escapeHtml(record.path)}">
             <div class="row-head">
               <h3 class="row-title">${escapeHtml(record.title || record.path)}</h3>
-              <span class="badge ${reviewClass}">${reviewText}</span>
+              <span class="row-badges">
+                <span class="badge ${statusClass}">${escapeHtml(statusText)}</span>
+                <span class="badge ${reviewClass}">${reviewText}</span>
+              </span>
             </div>
             <div class="row-path">${escapeHtml(record.path)}</div>
             <p class="row-summary">${escapeHtml(record.summary || "暂无摘要 / No summary yet")}</p>
@@ -1288,6 +1380,10 @@ _HTML_TEMPLATE = r"""<!doctype html>
       }
       const tags = (record.tags || []).map(tagBadge).join("");
       const ruleTags = (record.rule_tags || []).map(tagBadge).join("");
+      const manualTags = (record.manual_tags || []).map(tagBadge).join("");
+      const acceptedTags = (record.accepted_tags || []).map(tagBadge).join("");
+      const statusText = assetStatusLabel(record.asset_status);
+      const statusClass = assetStatusClass(record.asset_status, record.review_requires_confirmation);
       const keyPoints = (record.key_points || []).length
         ? `<ul class="points">${record.key_points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>`
         : `<p class="summary">暂无理解要点 / No key points yet</p>`;
@@ -1309,8 +1405,24 @@ _HTML_TEMPLATE = r"""<!doctype html>
         </section>
 
         <section class="detail-section">
+          <h3>人工批复 / Human decision</h3>
+          <dl class="kv">
+            <dt>资产状态 / Asset</dt><dd><span class="badge ${statusClass}">${escapeHtml(statusText)}</span> <code>${escapeHtml(record.asset_status || "active")}</code></dd>
+            <dt>批复选择 / Decision</dt><dd><code>${escapeHtml(record.review_decision || "none")}</code></dd>
+            <dt>后续动作 / Action</dt><dd>${escapeHtml(record.review_action_title || record.review_action || "暂无 / None")} <code>${escapeHtml(record.review_action || "")}</code></dd>
+            <dt>二次确认 / Confirm</dt><dd>${record.review_requires_confirmation ? "需要 / Required" : "不需要 / Not required"}</dd>
+            <dt>人工标签 / Manual tags</dt><dd><div class="tag-strip">${manualTags || "<span class=\"badge\">暂无 / None</span>"}</div></dd>
+            <dt>确认标签 / Accepted</dt><dd><div class="tag-strip">${acceptedTags || "<span class=\"badge\">暂无 / None</span>"}</div></dd>
+            <dt>备注 / Note</dt><dd>${escapeHtml(record.review_note || "暂无 / None")}</dd>
+            <dt>下一步 / Next step</dt><dd>${escapeHtml(record.review_next_step || "暂无 / None")}</dd>
+            <dt>风险提示 / Warning</dt><dd>${escapeHtml(record.review_warning || "暂无 / None")}</dd>
+          </dl>
+        </section>
+
+        <section class="detail-section">
           <h3>基本信息 / Basic info</h3>
           <dl class="kv">
+            <dt>资产来源 / Asset source</dt><dd><code>${escapeHtml(record.asset_source || "analysis")}</code></dd>
             <dt>内容类型 / Type</dt><dd>${escapeHtml(contentTypeLabel(record.content_type))} <code>${escapeHtml(record.content_type)}</code></dd>
             <dt>分析方式 / Method</dt><dd>${escapeHtml(methodLabel(record.analysis_method))} <code>${escapeHtml(record.analysis_method)}</code></dd>
             <dt>置信度 / Confidence</dt><dd>${Number(record.confidence || 0).toFixed(2)}</dd>

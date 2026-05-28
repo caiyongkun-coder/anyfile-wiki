@@ -127,6 +127,12 @@ anyfile-wiki review-server --review-dir data/first-review --once
 
 服务只监听本机地址，启动时会打印带 token 的 `review_url`。服务版页面不显示 JSONL 下载/复制按钮，只保留“保存草稿”和“提交批复”；提交后由本地 server 直接写入 `review-decisions.jsonl`、`decisions-summary.md`、`next-actions.jsonl` 和 `decision-plan.md`。
 
+如果 `review` 目录位于标准 run 结构中，例如 `data/daily-run/review`，提交后还会自动刷新：
+
+- `data/daily-run/assets/asset-index.jsonl`
+- `data/daily-run/assets/asset-index.md`
+- `data/daily-run/html/knowledge-index.html`
+
 读取批复结果：
 
 ```powershell
@@ -139,6 +145,18 @@ anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --ou
 - `next-actions.jsonl`：给 agent 读取的后续动作清单。
 - `decision-plan.md`：给人和 agent 共同审阅的后续执行计划。
 
+把批复结果应用回资产层：
+
+```powershell
+anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --actions data/first-review/next-actions.jsonl --review-items data/first-review/human-review.jsonl --out data/first-assets --html-out data/first-html
+```
+
+生成文件：
+
+- `asset-index.jsonl`：最终资产索引，包含 `asset_status`、`review_action`、`manual_tags` 和隐私冲突提示。
+- `asset-index.md`：给人看的资产状态摘要。
+- `knowledge-index.html`：刷新后的资产浏览页。
+
 当前 HTML 审阅页支持这些批复动作：
 
 - 允许本地 LLM 查看这个文件。
@@ -148,7 +166,7 @@ anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --ou
 - 标记为已人工整理。
 - 保持本地-only，不允许云端读取。
 
-这些交互不会悄悄删除文件，也不会直接改隐私配置。当前会先把用户选择写入独立记录，再由 `anyfile-wiki decisions` 转成后续动作计划，例如本地 LLM 复核队列、忽略候选、人工标签覆盖记录和云端授权候选。
+这些交互不会悄悄删除文件，也不会直接改隐私配置。当前会先把用户选择写入独立记录，再由 `anyfile-wiki decisions` 转成后续动作计划，例如本地 LLM 复核队列、忽略候选、人工标签覆盖记录和云端授权候选；随后 `anyfile-wiki assets` 会把动作写回最终资产索引，供 agent 和 HTML 资产页使用。
 
 ## 设计原则
 

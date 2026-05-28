@@ -302,6 +302,26 @@ def test_review_server_submits_decisions_and_writes_action_outputs(tmp_path):
         "severity": "medium",
     }
     (review_dir / "human-review.jsonl").write_text(json.dumps(review_record, ensure_ascii=False) + "\n", encoding="utf-8")
+    analyze_dir = tmp_path / "analyze"
+    analyze_dir.mkdir()
+    (analyze_dir / "knowledge-index.jsonl").write_text(
+        json.dumps(
+            {
+                "path": str(source),
+                "status": "ok",
+                "title": "allowed.md",
+                "summary": "fixture summary",
+                "tags": ["document"],
+                "content_type": "document",
+                "analysis_method": "rules",
+                "needs_human_review": True,
+                "review_reason": "rules_only_needs_semantic_review",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     httpd, token = make_review_server(review_dir=review_dir, port=0, token="test-token", once=True)
     host, port = httpd.server_address[:2]
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -348,6 +368,12 @@ def test_review_server_submits_decisions_and_writes_action_outputs(tmp_path):
     assert (review_dir / "next-actions.jsonl").exists()
     assert (review_dir / "decision-plan.md").exists()
     assert "queue_local_llm_review" in (review_dir / "next-actions.jsonl").read_text(encoding="utf-8")
+    assert (tmp_path / "assets" / "asset-index.jsonl").exists()
+    assert (tmp_path / "html" / "knowledge-index.html").exists()
+    asset_text = (tmp_path / "assets" / "asset-index.jsonl").read_text(encoding="utf-8")
+    assert "local_llm_queue" in asset_text
+    assert "topic/test" in asset_text
+    assert "applied_asset_index_jsonl" in result["outputs"]
 
 
 def test_decisions_cli_reads_exported_jsonl_and_writes_summary(tmp_path):

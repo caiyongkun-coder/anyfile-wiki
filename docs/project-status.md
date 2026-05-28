@@ -29,6 +29,9 @@
 - 人工复核页可导出 `review-decisions.jsonl`。
 - `anyfile-wiki decisions` 可读取 `review-decisions.jsonl`，生成批复摘要、`next-actions.jsonl` 和 `decision-plan.md`。
 - `next-actions.jsonl` 已能把人类批复转成 agent 后续动作：本地 LLM 复核队列、云端授权候选、忽略候选、人工标签覆盖、稍后复核和保持隐私。
+- 新增 `anyfile-wiki assets`，可把 `knowledge-index.jsonl`、`human-review.jsonl` 和 `next-actions.jsonl` 合并为最终 `asset-index.jsonl`、`asset-index.md`，并刷新 `knowledge-index.html`。
+- `review-server` 服务版提交后，如果处在标准 run 目录结构中，会自动生成/刷新 `assets/asset-index.jsonl` 和 `html/knowledge-index.html`。
+- 资产页已能展示资产状态、人工批复、后续动作、二次确认、人工标签和隐私冲突提示。
 - `review-decisions.jsonl` 读取已兼容 Windows PowerShell 常见的 UTF-8 BOM 文件。
 - 新增 `anyfile-wiki run`，通过 `run-state.json` 分阶段推进 scan、extract、analyze、review 和 html，支持重复调用后继续下一小步。
 - `run-state.json` 当前记录 root、配置、输出路径、阶段状态、路径游标、分块次数、累计统计和最后一步结果。
@@ -39,8 +42,8 @@
 
 ## 最新验证
 
-- `python -m pytest -q`：`78 passed`
-- `anyfile-wiki --help` 已包含 `decisions` 命令。
+- `python -m pytest -q`：`82 passed`
+- `anyfile-wiki --help` 已包含 `decisions` 和 `assets` 命令。
 - `anyfile-wiki run --help` 已包含 `run-state.json` 日常运行入口。
 - 演示页已生成：
   - `data/review-html-demo/human-review.html`
@@ -51,13 +54,13 @@
 
 - `knowledge-index.html` 和 `human-review.html` 都是静态页面，不需要后端服务。
 - 静态页面只负责人类浏览和批复，不直接启动本地命令。
-- 人类批复导出为 `review-decisions.jsonl` 后，由 agent 或 CLI 继续读取并执行下一步。
-- 当前“执行下一步”先落成计划文件，不直接移动、删除、重命名源文件，也不直接修改隐私配置。
+- 人类批复导出为 `review-decisions.jsonl` 后，由 agent 或 CLI 继续读取；当前已经能把批复动作回写到最终资产索引。
+- 当前“执行下一步”会更新资产状态和后续动作，不直接移动、删除、重命名源文件，也不直接修改隐私配置。
 - 日常运行入口使用路径游标做第一版断点续跑，先解决 agent 空闲时间短时的持续推进问题。
 - 云端 LLM 必须显式授权目录和确认风险；默认不允许云端读取本地文件。
 
 ## 下一步建议
 
-优先让 agent 自动消费 `next-actions.jsonl`：先处理本地 LLM 复核、人工标签覆盖和忽略候选汇总；云端 LLM 候选仍只生成配置建议，必须等待人类确认。
+下一步优先补“本地 LLM 复核队列”的实际执行：从 `asset-index.jsonl` 找出 `local_llm_queue`，在隐私策略允许时重新分析并回写资产索引。云端 LLM 候选仍只生成配置建议，必须等待人类确认。
 
 随后增强 `run-state.json`：增加时间预算、失败重试策略和更细的目录级扫描游标。

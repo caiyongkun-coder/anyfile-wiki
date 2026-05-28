@@ -14,6 +14,7 @@ from .analyze import (
     write_analysis_comparison_md,
     write_analysis_outputs,
 )
+from .assets import build_asset_index, load_jsonl_records, write_asset_outputs
 from .decisions import (
     actions_as_dicts,
     build_decision_actions,
@@ -173,6 +174,17 @@ def build_parser() -> ArgumentParser:
     decisions.add_argument("--plan-out", default=None, help="Optional Markdown decision plan path")
     decisions.add_argument("--json", action="store_true", help="Emit JSON")
     decisions.set_defaults(func=cmd_decisions)
+
+    assets = subparsers.add_parser("assets", help="Apply human review actions into the final asset index")
+    assets.add_argument("--analysis", default="data/analyze/knowledge-index.jsonl", help="knowledge-index.jsonl path")
+    assets.add_argument("--actions", default="data/review/next-actions.jsonl", help="next-actions.jsonl path")
+    assets.add_argument("--review-items", default="data/review/human-review.jsonl", help="Optional human-review.jsonl path")
+    assets.add_argument("--out", default="data/assets", help="Asset index output directory")
+    assets.add_argument("--html-out", default="data/html", help="Also refresh the HTML asset browser in this directory")
+    assets.add_argument("--no-html", action="store_true", help="Only write asset JSON/Markdown, do not refresh HTML")
+    assets.add_argument("--tags-config", default="configs/tags.example.yaml", help="Tag taxonomy YAML")
+    assets.add_argument("--json", action="store_true", help="Emit JSON")
+    assets.set_defaults(func=cmd_assets)
 
     run = subparsers.add_parser("run", help="Run one resumable daily processing step with run-state.json")
     run.add_argument("roots", nargs="*", help="Root directories or files. Required when creating a new run state")
@@ -575,6 +587,51 @@ def cmd_decisions(args) -> int:
     return 0
 
 
+def cmd_assets(args) -> int:
+    analysis_path = Path(args.analysis)
+    actions_path = Path(args.actions)
+    review_items_path = Path(args.review_items) if args.review_items else None
+    if not analysis_path.exists():
+        print(f"analysis file not found: {analysis_path}", file=sys.stderr)
+        return 2
+    if not actions_path.exists():
+        print(f"actions file not found: {actions_path}", file=sys.stderr)
+        return 2
+
+    analysis_records = load_jsonl_records(analysis_path)
+    action_records = load_jsonl_records(actions_path)
+    review_items = load_jsonl_records(review_items_path) if review_items_path and review_items_path.exists() else []
+    records = build_asset_index(analysis_records, action_records, review_items)
+    tags_config = load_tags_config(_optional_path(args.tags_config))
+    outputs = write_asset_outputs(
+        records,
+        args.out,
+        html_dir=None if args.no_html else args.html_out,
+        tags_config=tags_config,
+        source_path=analysis_path,
+    )
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "records": len(records),
+                    "review_actions": len(action_records),
+                    "review_items": len(review_items),
+                    "outputs": {name: str(path) for name, path in outputs.items()},
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+    print(f"records: {len(records)}")
+    print(f"review_actions: {len(action_records)}")
+    print(f"review_items: {len(review_items)}")
+    for name, path in outputs.items():
+        print(f"{name}: {path}")
+    return 0
+
+
 def cmd_run(args) -> int:
     state_path = Path(args.state) if args.state else Path(args.out) / "run-state.json"
     if args.status:
@@ -857,12 +914,16 @@ def _run_html_stage(state: dict) -> dict:
     paths = state["paths"]
     config = state["config"]
     tags_config = load_tags_config(_optional_path(config.get("tags_config")))
-    records = load_browser_records(paths["knowledge_index"])
+    asset_index = paths.get("asset_index") or str(Path(paths["out_dir"]) / "assets" / "asset-index.jsonl")
+    source_path = Path(asset_index)
+    if source_path is None or not source_path.is_file():
+        source_path = Path(paths["knowledge_index"])
+    records = load_browser_records(source_path)
     outputs = write_knowledge_browser_html(
         records,
         paths["html_dir"],
         tags_config=tags_config,
-        source_path=Path(paths["knowledge_index"]),
+        source_path=source_path,
     )
     stats = {"records": len(records)}
     output_strings = {name: str(path) for name, path in outputs.items()}

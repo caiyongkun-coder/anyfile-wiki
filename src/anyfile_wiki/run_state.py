@@ -52,6 +52,8 @@ def new_run_state(
             "analysis_manifest": str(root / "analyze" / "analysis-manifest.jsonl"),
             "knowledge_index": str(root / "analyze" / "knowledge-index.jsonl"),
             "review_dir": str(root / "review"),
+            "asset_dir": str(root / "assets"),
+            "asset_index": str(root / "assets" / "asset-index.jsonl"),
             "html_dir": str(root / "html"),
         },
         "stages": {stage: _empty_stage() for stage in STAGE_ORDER},
