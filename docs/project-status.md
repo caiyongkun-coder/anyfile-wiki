@@ -36,7 +36,7 @@
 
 ## 最新验证
 
-- `python -m pytest -q`：`74 passed`
+- `python -m pytest -q`：`76 passed`
 - `anyfile-wiki --help` 已包含 `decisions` 命令。
 - `anyfile-wiki run --help` 已包含 `run-state.json` 日常运行入口。
 - 演示页已生成：

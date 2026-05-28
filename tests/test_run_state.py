@@ -22,12 +22,7 @@ def _run_cli(argv: list[str]) -> tuple[int, str, str]:
     return code, stdout.getvalue(), stderr.getvalue()
 
 
-def test_run_command_progresses_to_complete_with_small_limits(tmp_path):
-    source = tmp_path / "source"
-    (source / "sub").mkdir(parents=True)
-    (source / "a.txt").write_text("alpha privacy scan note", encoding="utf-8")
-    (source / "sub" / "b.md").write_text("# Beta\n\nanalysis extract note", encoding="utf-8")
-    out_dir = tmp_path / "run"
+def _write_allow_configs(tmp_path: Path, source: Path) -> tuple[Path, Path]:
     privacy = tmp_path / "privacy.yaml"
     privacy.write_text(
         "\n".join(
@@ -47,6 +42,16 @@ def test_run_command_progresses_to_complete_with_small_limits(tmp_path):
     )
     excludes = tmp_path / "excludes.yaml"
     excludes.write_text("version: 1\n", encoding="utf-8")
+    return privacy, excludes
+
+
+def test_run_command_progresses_to_complete_with_small_limits(tmp_path):
+    source = tmp_path / "source"
+    (source / "sub").mkdir(parents=True)
+    (source / "a.txt").write_text("alpha privacy scan note", encoding="utf-8")
+    (source / "sub" / "b.md").write_text("# Beta\n\nanalysis extract note", encoding="utf-8")
+    out_dir = tmp_path / "run"
+    privacy, excludes = _write_allow_configs(tmp_path, source)
 
     last_stdout = ""
     for index in range(12):
@@ -98,3 +103,87 @@ def test_run_command_requires_roots_for_new_state(tmp_path):
     assert code == 2
     assert stdout == ""
     assert "roots are required" in stderr
+
+
+def test_run_status_json_outputs_existing_state_without_roots(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "note.md").write_text("# Note\n\nstatus json fixture", encoding="utf-8")
+    out_dir = tmp_path / "run"
+    privacy, excludes = _write_allow_configs(tmp_path, source)
+
+    code, stdout, stderr = _run_cli(
+        [
+            "run",
+            str(source),
+            "--out",
+            str(out_dir),
+            "--privacy",
+            str(privacy),
+            "--excludes",
+            str(excludes),
+            "--max-scan-entries",
+            "20",
+        ]
+    )
+    assert code == 0, stderr
+    assert "current_stage: extract" in stdout
+
+    code, stdout, stderr = _run_cli(["run", "--out", str(out_dir), "--status", "--json"])
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert payload["status"] == "paused"
+    assert payload["current_stage"] == "extract"
+    assert payload["roots"] == [str(source)]
+    assert payload["paths"]["out_dir"] == str(out_dir)
+    assert payload["stages"]["scan"]["status"] == "complete"
+    assert "result" not in payload
+
+
+def test_run_stage_argument_runs_named_stage_from_existing_state_without_roots(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "note.md").write_text("# Note\n\nstage fixture", encoding="utf-8")
+    out_dir = tmp_path / "run"
+    privacy, excludes = _write_allow_configs(tmp_path, source)
+
+    code, stdout, stderr = _run_cli(
+        [
+            "run",
+            str(source),
+            "--out",
+            str(out_dir),
+            "--privacy",
+            str(privacy),
+            "--excludes",
+            str(excludes),
+            "--max-scan-entries",
+            "20",
+        ]
+    )
+    assert code == 0, stderr
+    state = json.loads((out_dir / "run-state.json").read_text(encoding="utf-8"))
+    assert state["current_stage"] == "extract"
+    assert state["stages"]["scan"]["chunks"] == 1
+
+    code, stdout, stderr = _run_cli(
+        [
+            "run",
+            "--out",
+            str(out_dir),
+            "--stage",
+            "scan",
+            "--max-scan-entries",
+            "20",
+            "--json",
+        ]
+    )
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert payload["result"]["stage"] == "scan"
+    assert payload["state"]["current_stage"] == "extract"
+    assert payload["state"]["roots"] == [str(source)]
+    assert payload["state"]["stages"]["scan"]["status"] == "complete"
+    assert payload["state"]["stages"]["scan"]["chunks"] == 2

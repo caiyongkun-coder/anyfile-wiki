@@ -333,11 +333,35 @@ def test_decisions_cli_writes_agent_action_plan(tmp_path):
     assert len(payload["actions"]) == 4
     assert actions_path.exists()
     actions = [json.loads(line) for line in actions_path.read_text(encoding="utf-8").splitlines()]
+    assert payload["actions"] == actions
+    expected_action_fields = {
+        "path",
+        "action",
+        "title",
+        "source_decision",
+        "category",
+        "severity",
+        "manual_tags",
+        "note",
+        "privacy_level",
+        "requires_confirmation",
+        "reason",
+        "next_step",
+        "decided_at",
+    }
+    assert all(expected_action_fields <= record.keys() for record in payload["actions"])
+    assert all(isinstance(record["requires_confirmation"], bool) for record in payload["actions"])
     action_names = {record["action"] for record in actions}
     assert "queue_local_llm_review" in action_names
     assert "record_manual_tags" in action_names
     assert "propose_cloud_llm_authorization" in action_names
     assert "add_to_ignore_candidates" in action_names
+    actions_by_name = {record["action"]: record for record in actions}
+    assert actions_by_name["queue_local_llm_review"]["source_decision"] == "allow_local_llm"
+    assert actions_by_name["record_manual_tags"]["manual_tags"] == ["topic/semantic_analysis"]
+    assert actions_by_name["record_manual_tags"]["privacy_level"] == "local_metadata"
+    assert actions_by_name["propose_cloud_llm_authorization"]["privacy_level"] == "cloud_candidate"
+    assert actions_by_name["add_to_ignore_candidates"]["requires_confirmation"] is True
     assert any(record["requires_confirmation"] for record in actions if record["action"] == "propose_cloud_llm_authorization")
     plan_text = plan_path.read_text(encoding="utf-8")
     assert "人工批复后续执行计划" in plan_text
