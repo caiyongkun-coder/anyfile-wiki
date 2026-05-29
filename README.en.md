@@ -112,107 +112,7 @@ Continue the AnyFile Wiki daily scan.
 Find where my budget measurement files are.
 ```
 
-For CLI debugging, use the developer commands below. `anyfile-wiki scan` is always a safe dry-run: it creates an access plan and inventory, but does not read file bodies, summarize files, or write vectors.
-
-## Developer Commands
-
-```powershell
-# Install the package without installing the Skill
-python -m pip install -e .[dev]
-python -m pip install -e .[parse]
-python -m pip install -e .[ocr]
-
-# Preview Skill installation without writing files
-python scripts/install_agent_skill.py --dry-run
-
-# Initialize agent-readable configs
-anyfile-wiki agent-init --profile configs/agent-profile.yaml --out data/daily-run
-
-# Query existing asset indexes without rescanning original files
-anyfile-wiki query "budget" --profile configs/agent-profile.yaml --json
-
-# Record agent usage feedback
-anyfile-wiki usage-event --asset-id "<asset_id>" --event cited --query "budget"
-
-# Show suggested personal scan roots
-anyfile-wiki roots --include-missing
-
-# Explain recommended scan roots config
-anyfile-wiki roots --explain
-anyfile-wiki roots --explain --json
-
-# Explain the privacy policy for a user or setup agent
-anyfile-wiki privacy --privacy configs/privacy.yaml
-anyfile-wiki privacy --privacy configs/privacy.yaml --json
-
-# Scan a small target first
-anyfile-wiki scan "$env:USERPROFILE\Documents" --privacy configs/privacy.yaml --out data/first-scan --max-entries 500
-
-# Show policy counts and policy sources
-anyfile-wiki status --inventory data/first-scan/inventory.sqlite --sources
-
-# List inventory records
-anyfile-wiki list --inventory data/first-scan/inventory.sqlite --limit 20
-
-# Show denied records only
-anyfile-wiki list --inventory data/first-scan/inventory.sqlite --policy deny
-
-# Explain the policy decision for one path
-anyfile-wiki show "C:\path\to\file.md" --inventory data/first-scan/inventory.sqlite
-
-# Extract content from files allowed by policy
-anyfile-wiki extract --inventory data/first-scan/inventory.sqlite --out data/first-extract
-
-# Force re-extraction
-anyfile-wiki extract --inventory data/first-scan/inventory.sqlite --out data/first-extract --force
-
-# Retry only records whose latest extraction failed or skipped
-anyfile-wiki extract --inventory data/first-scan/inventory.sqlite --out data/first-extract --retry-failed
-
-# Show extraction status
-anyfile-wiki extracts --inventory data/first-scan/inventory.sqlite --stats
-
-# Build a local rule-based knowledge index
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
-
-# Simulate an API/LLM semantic pass and compare it with the rule-based result
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-codex --method codex-mock --compare-to data/first-analyze/analysis-manifest.jsonl
-
-# Explain local/cloud LLM privacy policy
-anyfile-wiki llm --llm-config configs/llm.example.yaml
-
-# Use a local LLM such as Ollama. First copy and edit configs/llm.yaml: set llm.mode to local and local.enabled to true
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-local --method local-llm --llm-config configs/llm.yaml
-
-# Use a cloud LLM. You must explicitly set cloud.enabled, risk_acknowledged, and allowed_paths
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-cloud --method cloud-llm --llm-config configs/llm.yaml
-
-# Write the human review list
-anyfile-wiki review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
-
-# Start the local review service. Submitting the page writes review-decisions.jsonl and follow-up plans
-anyfile-wiki review-server --review-dir data/first-review --once
-
-# Resumable daily run: pass roots on the first run, then repeat without roots to continue
-anyfile-wiki run "$env:USERPROFILE\Documents" --privacy configs/privacy.yaml --out data/daily-run --max-scan-entries 500 --extract-limit 100 --analyze-limit 100
-anyfile-wiki run --out data/daily-run
-anyfile-wiki run --out data/daily-run --status
-
-# Read decisions exported from human-review.html
-anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --out data/first-review/decisions-summary.md --actions-out data/first-review/next-actions.jsonl --plan-out data/first-review/decision-plan.md
-
-# Apply review decisions into the final asset index and refresh the human HTML browser
-anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --actions data/first-review/next-actions.jsonl --review-items data/first-review/human-review.jsonl --out data/first-assets --html-out data/first-html
-
-# Backfill or refresh sidecar virtual collections for an existing asset index
-anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets
-
-# Preview the sidecar plan and statistics without writing files
-anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets --dry-run
-
-# Build the Chinese local HTML asset browser
-anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
-```
+Detailed CLI examples live in the [CLI Reference](docs/cli-reference.md), so the README stays focused on the agent-first workflow. `anyfile-wiki scan` is always a safe dry-run: it creates an access plan and inventory, but does not read file bodies, summarize files, or write vectors.
 
 ## Project Layout
 
@@ -226,6 +126,7 @@ configs/
   privacy.example.yaml       Example user privacy policy
 docs/
   agent-skill.md             Agent Skill and cross-agent adapter guide
+  cli-reference.md           CLI reference for development and debugging
   configuration.md           Configuration guide
   privacy-setup.md           Privacy setup and agent-readable policy guide
   roots-setup.md             Recommended scan roots setup guide
@@ -320,6 +221,7 @@ Current tests cover:
 - [Project Start](PROJECT_START.md)
 - [Development Plan](DEVELOPMENT_PLAN.md)
 - [Agent Skill Guide](docs/agent-skill.md)
+- [CLI Reference](docs/cli-reference.md)
 - [Configuration Guide](docs/configuration.md)
 - [Privacy Setup Guide](docs/privacy-setup.md)
 - [Recommended Scan Roots Setup Guide](docs/roots-setup.md)

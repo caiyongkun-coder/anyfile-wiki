@@ -111,107 +111,7 @@ anyfile-wiki agent-init --profile configs/agent-profile.yaml --out data/daily-ru
 帮我找一下预算测算相关资料在哪里。
 ```
 
-需要调试 CLI 时，可以继续使用下面的开发者命令。`anyfile-wiki scan` 始终是安全的 dry-run：只生成访问计划和 inventory，不读取正文、不做摘要、不写入向量库。
-
-## 开发者/调试命令
-
-```powershell
-# 安装包但不安装 Skill
-python -m pip install -e .[dev]
-python -m pip install -e .[parse]
-python -m pip install -e .[ocr]
-
-# 只看 Skill 安装计划，不写文件
-python scripts/install_agent_skill.py --dry-run
-
-# 初始化 agent 可读配置
-anyfile-wiki agent-init --profile configs/agent-profile.yaml --out data/daily-run
-
-# 查询已有资产索引，不重新扫描原文件
-anyfile-wiki query "预算测算" --profile configs/agent-profile.yaml --json
-
-# 记录 agent 使用事件
-anyfile-wiki usage-event --asset-id "<asset_id>" --event cited --query "预算测算"
-
-# 查看推荐扫描目录
-anyfile-wiki roots --include-missing
-
-# 解释推荐扫描目录配置
-anyfile-wiki roots --explain
-anyfile-wiki roots --explain --json
-
-# 给用户或初始化 agent 解释隐私配置
-anyfile-wiki privacy --privacy configs/privacy.yaml
-anyfile-wiki privacy --privacy configs/privacy.yaml --json
-
-# 扫描一个小目录
-anyfile-wiki scan "$env:USERPROFILE\Documents" --privacy configs/privacy.yaml --out data/first-scan --max-entries 500
-
-# 查看策略统计
-anyfile-wiki status --inventory data/first-scan/inventory.sqlite --sources
-
-# 列出 inventory 记录
-anyfile-wiki list --inventory data/first-scan/inventory.sqlite --limit 20
-
-# 只看 deny 记录
-anyfile-wiki list --inventory data/first-scan/inventory.sqlite --policy deny
-
-# 查看单个路径的策略命中原因
-anyfile-wiki show "C:\path\to\file.md" --inventory data/first-scan/inventory.sqlite
-
-# 对允许读取的文件执行提取
-anyfile-wiki extract --inventory data/first-scan/inventory.sqlite --out data/first-extract
-
-# 强制重跑
-anyfile-wiki extract --inventory data/first-scan/inventory.sqlite --out data/first-extract --force
-
-# 只重试最近一次失败或跳过的记录
-anyfile-wiki extract --inventory data/first-scan/inventory.sqlite --out data/first-extract --retry-failed
-
-# 查看提取状态
-anyfile-wiki extracts --inventory data/first-scan/inventory.sqlite --stats
-
-# 生成本地规则版知识索引
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze
-
-# 模拟 API/LLM 语义理解，并和规则版结果对比
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-codex --method codex-mock --compare-to data/first-analyze/analysis-manifest.jsonl
-
-# 查看 LLM/云端隐私策略
-anyfile-wiki llm --llm-config configs/llm.example.yaml
-
-# 使用本地 LLM，例如 Ollama。需要先复制并修改 configs/llm.yaml，把 llm.mode 设为 local，local.enabled 设为 true
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-local --method local-llm --llm-config configs/llm.yaml
-
-# 使用云端 LLM。必须显式设置 cloud.enabled、risk_acknowledged 和 allowed_paths
-anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-cloud --method cloud-llm --llm-config configs/llm.yaml
-
-# 生成人工待整理清单
-anyfile-wiki review --inventory data/first-scan/inventory.sqlite --analysis data/first-analyze/analysis-manifest.jsonl --out data/first-review
-
-# 启动本地批复服务。页面提交后会直接写 review-decisions.jsonl 和后续动作计划
-anyfile-wiki review-server --review-dir data/first-review --once
-
-# 日常断点运行：首次带扫描根目录，之后重复同一条命令可按 run-state.json 继续
-anyfile-wiki run "$env:USERPROFILE\Documents" --privacy configs/privacy.yaml --out data/daily-run --max-scan-entries 500 --extract-limit 100 --analyze-limit 100
-anyfile-wiki run --out data/daily-run
-anyfile-wiki run --out data/daily-run --status
-
-# 读取 human-review.html 导出的人工批复
-anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --out data/first-review/decisions-summary.md --actions-out data/first-review/next-actions.jsonl --plan-out data/first-review/decision-plan.md
-
-# 把批复结果应用回最终资产索引，并刷新给人看的 HTML
-anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --actions data/first-review/next-actions.jsonl --review-items data/first-review/human-review.jsonl --out data/first-assets --html-out data/first-html
-
-# 回填或刷新已有资产索引的 sidecar 虚拟资料体系
-anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets
-
-# 只看 sidecar 计划和统计，不写文件
-anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets --dry-run
-
-# 生成中文 HTML 资产浏览页
-anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
-```
+详细 CLI 只放在 [CLI 参考](docs/cli-reference.md)，避免 README 变成命令手册。`anyfile-wiki scan` 始终是安全的 dry-run：只生成访问计划和 inventory，不读取正文、不做摘要、不写入向量库。
 
 ## 项目结构
 
@@ -225,6 +125,7 @@ configs/
   privacy.example.yaml       用户隐私策略示例
 docs/
   agent-skill.md             Agent Skill 和跨 agent 适配说明
+  cli-reference.md           开发和调试用 CLI 参考
   configuration.md           配置说明
   privacy-setup.md           隐私配置初始化和 AI 可读说明
   roots-setup.md             推荐扫描目录初始化说明
@@ -317,6 +218,7 @@ python -m pytest -q
 - [项目启动文档](PROJECT_START.md)
 - [开发计划与自研范围](DEVELOPMENT_PLAN.md)
 - [Agent Skill 说明](docs/agent-skill.md)
+- [CLI 参考](docs/cli-reference.md)
 - [配置说明](docs/configuration.md)
 - [隐私配置初始化说明](docs/privacy-setup.md)
 - [推荐扫描目录配置说明](docs/roots-setup.md)
