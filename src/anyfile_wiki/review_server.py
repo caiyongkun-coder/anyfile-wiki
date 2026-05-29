@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+import hashlib
 import json
 import secrets
 import threading
@@ -74,6 +75,8 @@ def make_review_server(
         server_mode=True,
         submit_url=submit_path,
     ).encode("utf-8")
+    submit_lock = threading.Lock()
+    last_final_submission: dict[str, Any] = {"signature": "", "outputs": {}}
 
     class ReviewHandler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib signature.
@@ -106,12 +109,23 @@ def make_review_server(
                 records = payload.get("records")
                 if not isinstance(records, list) or not records:
                     raise ValueError("records must be a non-empty list")
-                outputs = write_review_decisions_from_records(records, root)
+                signature = _records_signature(records)
+                final = bool(payload.get("final"))
+                duplicate = False
+                with submit_lock:
+                    if final and signature == last_final_submission["signature"] and last_final_submission["outputs"]:
+                        outputs = dict(last_final_submission["outputs"])
+                        duplicate = True
+                    else:
+                        outputs = write_review_decisions_from_records(records, root)
+                        if final:
+                            last_final_submission["signature"] = signature
+                            last_final_submission["outputs"] = dict(outputs)
             except Exception as exc:  # noqa: BLE001 - return error to browser.
                 self._send_json({"ok": False, "error": str(exc)}, status=400)
                 return
-            self._send_json({"ok": True, "outputs": outputs})
-            if once and bool(payload.get("final")):
+            self._send_json({"ok": True, "outputs": outputs, "duplicate": duplicate})
+            if once and bool(payload.get("final")) and not duplicate:
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
 
         def _authorized(self, parsed) -> bool:
@@ -136,3 +150,8 @@ def make_review_server(
 
     httpd = ThreadingHTTPServer((host, int(port)), ReviewHandler)
     return httpd, server_token
+
+
+def _records_signature(records: list[dict[str, Any]]) -> str:
+    canonical = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

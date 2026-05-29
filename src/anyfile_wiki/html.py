@@ -966,6 +966,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
       methods: {
         rules: "本地规则",
         "codex-mock": "模拟语义",
+        "agent-llm": "宿主 Agent",
         "local-llm": "本地 LLM",
         "cloud-llm": "云端 LLM",
         "human-review": "人工复核"

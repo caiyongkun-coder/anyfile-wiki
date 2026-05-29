@@ -16,6 +16,7 @@ from .semantic import infer_semantic_understanding
 SUMMARY_MAX_CHARS = 360
 DEFAULT_MAX_TEXT_CHARS = 200_000
 LLM_ANALYSIS_METHODS = {"local-llm", "cloud-llm"}
+AGENT_ANALYSIS_METHODS = {"agent-llm"}
 SUPPORTED_ANALYSIS_METHODS = {"rules", "codex-mock", *LLM_ANALYSIS_METHODS}
 
 CODE_EXTENSIONS = {
@@ -465,7 +466,13 @@ def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) ->
         by_type[result.content_type].append(result)
 
     methods = {result.analysis_method for result in results if result.status != "error"}
-    if methods & LLM_ANALYSIS_METHODS:
+    if methods & AGENT_ANALYSIS_METHODS:
+        method_note = (
+            "当前版本包含宿主 agent 语义复核结果：`agent-llm` 不要求 AnyFile Wiki 配置 API key，"
+            "由 Codex/OpenClaw/Hermes 这类宿主 agent 读取已提取、已授权的文本并写回结构化摘要和标签；"
+            "AnyFile Wiki 只负责隐私门控、任务清单和写回校验。"
+        )
+    elif methods & LLM_ANALYSIS_METHODS:
         method_note = (
             "当前版本包含真实 LLM/API 语义理解结果：模型只接收已经通过隐私策略和提取流程的文本；"
             "`cloud-llm` 还必须通过云端 allowed_paths 和风险确认。粗标签仍会保留，方便审计和回退。"
@@ -510,6 +517,7 @@ def write_knowledge_index_md(results: list[AnalysisResult], path: str | Path) ->
             "- 这是给人先快速盘点文件的索引，不是最终结论。",
             "- `analysis_method: rules` 表示只使用文件路径、扩展名、标题和关键词规则。",
             "- `analysis_method: codex-mock` 表示这是模拟 API/LLM 语义版，用来先验证真实模型接入后的数据结构和阅读体验。",
+            "- `analysis_method: agent-llm` 表示宿主 agent 只读取已提取文本后写回的语义结果，不需要 AnyFile Wiki 配置 API key。",
             "- `analysis_method: local-llm` 表示文件提取文本已发送给本机模型服务，例如 Ollama 或 LM Studio。",
             "- `analysis_method: cloud-llm` 表示文件提取文本已在显式授权后发送给云端 API；未授权文件会在 manifest 中标记为 skipped。",
             "- 语义版会保留 `保留粗标签` 和 `规则版摘要`，这样可以直接比较模型理解和规则粗标签的差异。",

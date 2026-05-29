@@ -107,7 +107,8 @@ def _static_controls() -> str:
 def _server_controls() -> str:
     return """
       <button class=\"button\" type=\"button\" id=\"saveDraft\">保存草稿 / Save</button>
-      <button class=\"button primary\" type=\"button\" id=\"submitReview\">提交批复 / Submit</button>"""
+      <button class=\"button primary\" type=\"button\" id=\"submitReview\">提交批复 / Submit</button>
+      <span class=\"server-status\" id=\"serverStatus\" role=\"status\" aria-live=\"polite\"></span>"""
 
 
 def _manual_export_panel() -> str:
@@ -240,7 +241,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
 
     .toolbar {
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) auto auto auto auto auto;
+      grid-template-columns: minmax(220px, 1fr) repeat(6, auto);
       gap: 10px;
       padding: 12px 20px;
       background: var(--panel);
@@ -271,6 +272,11 @@ _HTML_TEMPLATE = r"""<!doctype html>
     .button {
       padding: 0 12px;
       white-space: nowrap;
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
     }
 
     .button.primary {
@@ -350,6 +356,13 @@ _HTML_TEMPLATE = r"""<!doctype html>
       font-size: 12px;
       resize: vertical;
       white-space: pre;
+    }
+
+    .server-status {
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
     }
 
     @keyframes exportDonePulse {
@@ -594,6 +607,18 @@ _HTML_TEMPLATE = r"""<!doctype html>
       margin-top: 18px;
       padding-top: 14px;
       border-top: 1px solid #edf1f6;
+    }
+
+    .decision-section {
+      position: sticky;
+      top: 54px;
+      z-index: 1;
+      margin: 12px -16px 0;
+      padding: 12px 16px 14px;
+      border-top: 0;
+      border-bottom: 1px solid #edf1f6;
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(8px);
     }
 
     .detail-section h3 {
@@ -845,10 +870,13 @@ __ANYFILE_WIKI_MANUAL_EXPORT__
       severity: "all",
       decisionStatus: "all",
       page: 1,
-      pageSize: 10,
+      pageSize: 6,
       selectedId: (REVIEW_DATA.items || [])[0]?.id || "",
       decisions: loadStoredDecisions(),
       lastExportSignature: "",
+      lastServerSignature: "",
+      serverSubmitting: false,
+      serverMessage: "",
       manualExportVisible: false,
       manualExportMessage: ""
     };
@@ -890,8 +918,10 @@ __ANYFILE_WIKI_MANUAL_EXPORT__
     function setDecision(itemId, patch, shouldRender = true) {
       state.decisions[itemId] = { ...decisionFor({ id: itemId }), ...patch };
       state.lastExportSignature = "";
+      state.serverMessage = "";
       saveStoredDecisions();
       renderExportButton();
+      renderServerButtons();
       renderManualExport();
       if (shouldRender) render();
     }
@@ -1092,7 +1122,7 @@ __ANYFILE_WIKI_MANUAL_EXPORT__
         <h2 class="detail-title">${escapeHtml(item.name || item.path)}</h2>
         <div class="detail-path">${escapeHtml(item.path)}</div>
 
-        <section class="detail-section">
+        <section class="detail-section decision-section">
           <h3>批复动作 / Decision</h3>
           <div class="decision-grid">${buttons}</div>
           <div class="field">
@@ -1201,8 +1231,26 @@ __ANYFILE_WIKI_MANUAL_EXPORT__
       if (!REVIEW_DATA.server_mode) return;
       const draftButton = document.getElementById("saveDraft");
       const submitButton = document.getElementById("submitReview");
-      if (draftButton) draftButton.textContent = message || "保存草稿 / Save";
-      if (submitButton && !message) submitButton.textContent = "提交批复 / Submit";
+      const status = document.getElementById("serverStatus");
+      const signature = decisionSignature();
+      const alreadySubmitted = Boolean(signature && state.lastServerSignature === signature);
+      const activeMessage = message || state.serverMessage || "";
+      if (draftButton) {
+        draftButton.disabled = state.serverSubmitting;
+        draftButton.textContent = state.serverSubmitting ? "保存中 / Saving..." : "保存草稿 / Save";
+      }
+      if (submitButton) {
+        submitButton.disabled = state.serverSubmitting || alreadySubmitted;
+        submitButton.classList.toggle("is-done", alreadySubmitted);
+        if (state.serverSubmitting) {
+          submitButton.textContent = "提交中 / Submitting...";
+        } else if (alreadySubmitted) {
+          submitButton.textContent = "✓ 已提交 / Submitted";
+        } else {
+          submitButton.textContent = "提交批复 / Submit";
+        }
+      }
+      if (status) status.textContent = activeMessage;
     }
 
     function renderManualExport() {
@@ -1277,8 +1325,16 @@ __ANYFILE_WIKI_MANUAL_EXPORT__
         return;
       }
       const target = REVIEW_DATA.submit_url || "/api/decisions";
+      const signature = decisionSignature();
+      if (finalize && signature && state.lastServerSignature === signature) {
+        state.serverMessage = "已提交，无需重复提交 / Already submitted";
+        renderServerButtons();
+        return;
+      }
       const activeButton = document.getElementById(finalize ? "submitReview" : "saveDraft");
-      if (activeButton) activeButton.textContent = finalize ? "提交中 / Submitting..." : "保存中 / Saving...";
+      state.serverSubmitting = true;
+      state.serverMessage = finalize ? "正在提交 / Submitting..." : "正在保存 / Saving...";
+      renderServerButtons();
       try {
         const response = await fetch(target, {
           method: "POST",
@@ -1289,17 +1345,20 @@ __ANYFILE_WIKI_MANUAL_EXPORT__
         if (!response.ok || !payload.ok) {
           throw new Error(payload.error || `HTTP ${response.status}`);
         }
-        state.lastExportSignature = decisionSignature();
+        state.lastExportSignature = signature;
+        state.lastServerSignature = signature;
+        state.serverMessage = payload.duplicate
+          ? "已提交，无需重复提交 / Already submitted"
+          : (finalize ? "批复已提交，本地流程可以继续 / Submitted, workflow can continue" : "草稿已保存 / Draft saved");
         renderExportButton();
-        if (activeButton) activeButton.textContent = finalize ? "已提交 / Submitted" : "已保存 / Saved";
-        if (finalize) {
-          window.alert("批复已提交，本地流程可以继续。 / Review submitted. The local workflow can continue.");
-        }
       } catch (error) {
+        state.serverMessage = `提交失败 / Submit failed: ${error.message || error}`;
         if (activeButton) activeButton.textContent = finalize ? "提交失败 / Failed" : "保存失败 / Failed";
         window.alert(`提交失败 / Submit failed: ${error.message || error}`);
+      } finally {
+        state.serverSubmitting = false;
+        renderServerButtons();
       }
-      window.setTimeout(() => renderServerButtons(), 1400);
     }
 
     document.getElementById("searchInput").addEventListener("input", (event) => {

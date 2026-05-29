@@ -193,6 +193,175 @@ def test_usage_event_appends_and_sidecars_turn_it_into_usage_score(tmp_path):
     assert (asset_dir / "asset-usage-events.jsonl").read_text(encoding="utf-8").count("\n") == 1
 
 
+def test_agent_task_builds_privacy_gated_semantic_review_tasks(tmp_path):
+    run_dir = tmp_path / "run"
+    source = tmp_path / "docs" / "budget-plan.md"
+    extracted = run_dir / "extract" / "budget-plan.md.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("# Budget\n\nFTP budget plan", encoding="utf-8")
+    extracted.parent.mkdir(parents=True)
+    extracted.write_text("# Budget\n\nFTP budget plan", encoding="utf-8")
+    asset_id = asset_id_for_path(str(source))
+    _write_jsonl(
+        run_dir / "analyze" / "analysis-manifest.jsonl",
+        [
+            {
+                "path": str(source),
+                "output_path": str(extracted),
+                "status": "ok",
+                "title": "Budget plan",
+                "summary": "Rule summary",
+                "tags": ["document"],
+                "primary_tag": "document",
+                "content_type": "document",
+                "extension": ".md",
+                "parser": "direct_text",
+                "embedding_allowed": True,
+                "char_count": 24,
+                "word_count": 4,
+                "line_count": 3,
+                "analyzed_at": "2026-05-29T00:00:00+00:00",
+                "source_extract_status": "ok",
+                "analysis_method": "rules",
+                "confidence": 0.42,
+                "needs_human_review": True,
+                "review_reason": "rules_only_needs_semantic_review",
+            }
+        ],
+    )
+    _write_jsonl(
+        run_dir / "review" / "next-actions.jsonl",
+        [
+            {
+                "path": str(source),
+                "action": "queue_local_llm_review",
+                "source_decision": "allow_local_llm",
+                "category": "rules_only_or_low_confidence",
+                "privacy_level": "local",
+            },
+            {
+                "path": str(tmp_path / "private.md"),
+                "action": "propose_cloud_llm_authorization",
+                "source_decision": "allow_cloud_llm",
+                "category": "metadata_only",
+                "privacy_level": "cloud_candidate",
+            },
+        ],
+    )
+    _write_jsonl(
+        run_dir / "review" / "human-review.jsonl",
+        [
+            {"path": str(source), "access_policy": "allow", "category": "rules_only_or_low_confidence"},
+            {"path": str(tmp_path / "private.md"), "access_policy": "metadata_only", "category": "metadata_only"},
+        ],
+    )
+
+    code, stdout, stderr = _run_cli(
+        ["agent-task", "--kind", "semantic-review", "--in", str(run_dir / "review" / "next-actions.jsonl"), "--out", str(run_dir / "agent-review"), "--json"]
+    )
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert payload["stats"]["tasks"] == 1
+    assert payload["stats"]["skipped"] == 1
+    tasks = [json.loads(line) for line in (run_dir / "agent-review" / "semantic-review-tasks.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert tasks[0]["asset_id"] == asset_id
+    assert tasks[0]["extracted_text_path"] == str(extracted)
+    assert tasks[0]["privacy_context"]["allowed_to_read_original"] is False
+    assert tasks[0]["expected_output_schema"]["required"]
+    skipped = (run_dir / "agent-review" / "semantic-review-skipped.jsonl").read_text(encoding="utf-8")
+    assert "blocked review category" in skipped
+
+
+def test_agent_review_apply_refreshes_analysis_assets_and_html(tmp_path):
+    run_dir = tmp_path / "run"
+    source = tmp_path / "docs" / "budget-plan.md"
+    extracted = run_dir / "extract" / "budget-plan.md.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("# Budget\n\nFTP budget plan", encoding="utf-8")
+    extracted.parent.mkdir(parents=True)
+    extracted.write_text("# Budget\n\nFTP budget plan", encoding="utf-8")
+    asset_id = asset_id_for_path(str(source))
+    _write_jsonl(
+        run_dir / "analyze" / "analysis-manifest.jsonl",
+        [
+            {
+                "path": str(source),
+                "output_path": str(extracted),
+                "status": "ok",
+                "title": "Budget plan",
+                "summary": "Rule summary",
+                "tags": ["document"],
+                "primary_tag": "document",
+                "content_type": "document",
+                "extension": ".md",
+                "parser": "direct_text",
+                "embedding_allowed": True,
+                "char_count": 24,
+                "word_count": 4,
+                "line_count": 3,
+                "analyzed_at": "2026-05-29T00:00:00+00:00",
+                "source_extract_status": "ok",
+                "analysis_method": "rules",
+                "confidence": 0.42,
+                "needs_human_review": True,
+                "review_reason": "rules_only_needs_semantic_review",
+            }
+        ],
+    )
+    _write_jsonl(
+        run_dir / "review" / "next-actions.jsonl",
+        [
+            {
+                "path": str(source),
+                "action": "queue_local_llm_review",
+                "source_decision": "allow_local_llm",
+                "category": "rules_only_or_low_confidence",
+                "privacy_level": "local",
+            }
+        ],
+    )
+    _write_jsonl(
+        run_dir / "review" / "human-review.jsonl",
+        [{"path": str(source), "access_policy": "allow", "category": "rules_only_or_low_confidence"}],
+    )
+    code, stdout, stderr = _run_cli(
+        ["agent-task", "--in", str(run_dir / "review" / "next-actions.jsonl"), "--out", str(run_dir / "agent-review"), "--json"]
+    )
+    assert code == 0, stderr
+    _write_jsonl(
+        run_dir / "agent-review" / "results.jsonl",
+        [
+            {
+                "asset_id": asset_id,
+                "path": str(source),
+                "title": "FTP budget measurement plan",
+                "summary": "This document explains FTP budget measurement assumptions and workflow.",
+                "tags": ["topic/business_budgeting", "topic/data_reconciliation"],
+                "confidence": 0.88,
+                "needs_human_review": False,
+                "review_reason": "agent_llm_semantic_reviewed",
+                "key_points": ["assumptions", "workflow"],
+            }
+        ],
+    )
+
+    code, stdout, stderr = _run_cli(["agent-review-apply", "--in", str(run_dir / "agent-review" / "results.jsonl"), "--json"])
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert payload["stats"]["applied"] == 1
+    assert payload["stats"]["rejected"] == 0
+    manifest = [json.loads(line) for line in (run_dir / "analyze" / "analysis-manifest.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert manifest[0]["analysis_method"] == "agent-llm"
+    assert manifest[0]["needs_human_review"] is False
+    asset = json.loads((run_dir / "assets" / "asset-index.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert asset["asset_id"] == asset_id
+    assert asset["asset_status"] == "confirmed"
+    assert "topic/business_budgeting" in asset["tags"]
+    assert (run_dir / "html" / "knowledge-index.html").exists()
+
+
 def test_anyfile_wiki_skill_has_required_agent_workflows():
     skill = Path("skills/anyfile-wiki/SKILL.md").read_text(encoding="utf-8")
     frontmatter = skill.split("---", 2)[1]
@@ -201,6 +370,8 @@ def test_anyfile_wiki_skill_has_required_agent_workflows():
     assert metadata["name"] == "anyfile-wiki"
     assert "agent-init" in skill
     assert "anyfile-wiki query" in skill
+    assert "agent-task" in skill
+    assert "agent-review-apply" in skill
     assert "usage-event" in skill
     assert "Never move, delete, rename" in skill
     assert "human-review.html" in skill

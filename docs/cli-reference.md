@@ -32,6 +32,10 @@ anyfile-wiki run --out data/daily-run --status
 # 查询已有资产索引，不重新扫描原文件
 anyfile-wiki query "预算测算" --profile configs/agent-profile.yaml --json
 
+# 生成宿主 agent 语义复核任务，不要求 AnyFile Wiki 配置 API key
+anyfile-wiki agent-task --kind semantic-review --in data/daily-run/review/next-actions.jsonl --out data/daily-run/agent-review
+anyfile-wiki agent-review-apply --in data/daily-run/agent-review/results.jsonl
+
 # 记录 agent 使用事件
 anyfile-wiki usage-event --asset-id "<asset_id>" --event cited --query "预算测算"
 ```
@@ -80,6 +84,9 @@ anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data
 ## LLM 模式
 
 ```powershell
+# Codex/OpenClaw/Hermes 宿主 agent 场景优先使用 agent-task / agent-review-apply。
+# 下面两个模式适合独立 CLI 或后台无人值守自动化。
+
 # 本地 LLM，例如 Ollama。先复制并修改 configs/llm.yaml
 anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/first-analyze-local --method local-llm --llm-config configs/llm.yaml
 

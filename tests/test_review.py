@@ -322,6 +322,9 @@ def test_render_human_review_html_server_mode_uses_submit_controls(tmp_path):
     assert 'id="showJsonl"' not in html
     assert 'id="exportJsonl"' not in html
     assert 'id="manualJsonl"' not in html
+    assert 'id="serverStatus"' in html
+    assert "pageSize: 6" in html
+    assert "lastServerSignature" in html
     assert "/api/decisions?token=t" in html
 
 
@@ -357,7 +360,7 @@ def test_review_server_submits_decisions_and_writes_action_outputs(tmp_path):
         + "\n",
         encoding="utf-8",
     )
-    httpd, token = make_review_server(review_dir=review_dir, port=0, token="test-token", once=True)
+    httpd, token = make_review_server(review_dir=review_dir, port=0, token="test-token", once=False)
     host, port = httpd.server_address[:2]
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -392,12 +395,23 @@ def test_review_server_submits_decisions_and_writes_action_outputs(tmp_path):
         )
         response = connection.getresponse()
         result = json.loads(response.read().decode("utf-8"))
+
+        connection.request(
+            "POST",
+            f"/api/decisions?token={token}",
+            body=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        duplicate_result = json.loads(response.read().decode("utf-8"))
     finally:
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=5)
 
     assert result["ok"] is True
+    assert duplicate_result["ok"] is True
+    assert duplicate_result["duplicate"] is True
     assert (review_dir / "review-decisions.jsonl").exists()
     assert (review_dir / "decisions-summary.md").exists()
     assert (review_dir / "next-actions.jsonl").exists()

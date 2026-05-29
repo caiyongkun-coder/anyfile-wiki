@@ -79,6 +79,38 @@ anyfile-wiki analyze --inventory data/first-scan/inventory.sqlite --out data/fir
 
 如果云端文件缺少原始隐私策略上下文，或没有位于授权目录内，分析结果会写成 `status: skipped`，不会调用 API。
 
+## 宿主 Agent 语义复核
+
+在 Codex、OpenClaw、Hermes 这类宿主 agent 中，推荐优先使用 `agent-llm` / `agent-review` 流程，而不是让 AnyFile Wiki 再配置一套云端 API key。
+
+分工是：
+
+- AnyFile Wiki：执行隐私门控、扫描、提取文本、生成待复核任务、校验写回结果。
+- 宿主 agent：读取已提取文本，理解内容，生成结构化标题、摘要、标签、置信度和复核状态。
+- 用户：只需要确认隐私配置和人工复核决定，不需要重复配置宿主模型的 API key。
+
+生成任务：
+
+```powershell
+anyfile-wiki agent-task --kind semantic-review --in data/daily-run/review/next-actions.jsonl --out data/daily-run/agent-review
+```
+
+任务只会指向已经存在的 `extracted_text_path`。`deny`、`metadata_only`、缺少提取文本、或被策略挡住的文件会写入 `semantic-review-skipped.jsonl`，不会进入 agent 可读任务。
+
+宿主 agent 写回 `results.jsonl` 后：
+
+```powershell
+anyfile-wiki agent-review-apply --in data/daily-run/agent-review/results.jsonl
+```
+
+CLI 会校验 schema，并刷新 `analysis-manifest.jsonl`、`knowledge-index.jsonl`、`assets/asset-index.jsonl` 和 `html/knowledge-index.html`。写回后的记录使用：
+
+```text
+analysis_method: agent-llm
+```
+
+`cloud-llm` 继续保留给独立 CLI、无人值守后台或定时任务；这种模式仍然要求 `configs/llm.yaml`、API key、`allowed_paths` 和 `risk_acknowledged`。
+
 ## 人工待整理清单
 
 生成清单：
@@ -91,7 +123,7 @@ anyfile-wiki review --inventory data/first-scan/inventory.sqlite --analysis data
 
 - `human-review.md`：给人看的待整理清单。
 - `human-review.jsonl`：给 agent 或后续程序读取的结构化清单。
-- `human-review.html`：给人逐项批复的静态页面。
+- `human-review.html`：给人逐项批复的页面；日常推荐用 `review-server` 服务模式打开，静态文件作为备选。
 
 清单会包含这些类型：
 
@@ -117,7 +149,7 @@ anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data
 - `knowledge-index.html`：给人按标签、内容类型、分析方式和复核状态逐层浏览知识库。
 - `human-review.html`：给人处理待整理文件，并导出本地决策记录。
 
-`human-review.html` 是静态单文件页面。它不会直接执行本地命令，也不会绕过隐私策略；用户点击“导出批复”后，浏览器下载 `review-decisions.jsonl`，再由 agent 读取。
+静态 `human-review.html` 不会直接执行本地命令，也不会绕过隐私策略；用户点击“导出批复”后，浏览器下载 `review-decisions.jsonl`，再由 agent 读取。
 
 更顺手的主流程是由 agent 启动本地批复服务：
 
@@ -126,6 +158,8 @@ anyfile-wiki review-server --review-dir data/first-review --once
 ```
 
 服务只监听本机地址，启动时会打印带 token 的 `review_url`。服务版页面不显示 JSONL 下载/复制按钮，只保留“保存草稿”和“提交批复”；提交后由本地 server 直接写入 `review-decisions.jsonl`、`decisions-summary.md`、`next-actions.jsonl` 和 `decision-plan.md`。
+
+服务模式会把完全相同的重复提交视为幂等成功，不会额外生成新文件；页面也会在提交完成后禁用重复提交按钮。
 
 如果 `review` 目录位于标准 run 结构中，例如 `data/daily-run/review`，提交后还会自动刷新：
 
@@ -179,4 +213,4 @@ anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --action
 - `needs_human_review`
 - `review_reason`
 
-这些字段会被 `anyfile-wiki review` 用来生成待整理清单。真实 LLM 模式会把 `analysis_method` 写成 `local-llm` 或 `cloud-llm`，并把置信度、复核原因和模型说明写入同一套输出文件。
+这些字段会被 `anyfile-wiki review` 用来生成待整理清单。真实 LLM 模式会把 `analysis_method` 写成 `local-llm` 或 `cloud-llm`；宿主 agent 写回模式会写成 `agent-llm`。三者都会把置信度、复核原因和模型说明写入同一套输出文件。

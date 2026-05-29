@@ -12,3 +12,6 @@ data/
 tmp_scan_sample/
 
 configs/privacy.yaml
+configs/agent-profile.yaml
+configs/roots.yaml
+configs/schedule.yaml

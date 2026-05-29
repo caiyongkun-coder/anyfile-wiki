@@ -15,6 +15,7 @@ from .agent import (
     initialize_agent_workspace,
     query_assets,
 )
+from .agent_review import apply_semantic_review_results, build_semantic_review_tasks
 from .analyze import (
     AnalysisResult,
     analyze_extract_records,
@@ -93,6 +94,40 @@ def build_parser() -> ArgumentParser:
     usage_event.add_argument("--note", default="", help="Optional short note")
     usage_event.add_argument("--json", action="store_true", help="Emit JSON")
     usage_event.set_defaults(func=cmd_usage_event)
+
+    agent_task = subparsers.add_parser("agent-task", help="Create host-agent tasks from review actions")
+    agent_task.add_argument("--kind", choices=["semantic-review"], default="semantic-review", help="Agent task kind")
+    agent_task.add_argument(
+        "--in",
+        dest="input_path",
+        default="data/daily-run/review/next-actions.jsonl",
+        help="Input next-actions.jsonl path",
+    )
+    agent_task.add_argument("--out", default="data/daily-run/agent-review", help="Agent task output directory")
+    agent_task.add_argument("--analysis", default=None, help="Optional analysis-manifest.jsonl path")
+    agent_task.add_argument("--review-items", default=None, help="Optional human-review.jsonl path")
+    agent_task.add_argument("--tags-config", default="configs/tags.example.yaml", help="Tag taxonomy YAML")
+    agent_task.add_argument("--json", action="store_true", help="Emit JSON")
+    agent_task.set_defaults(func=cmd_agent_task)
+
+    agent_review_apply = subparsers.add_parser(
+        "agent-review-apply",
+        help="Validate host-agent semantic-review results and refresh analysis/assets/html",
+    )
+    agent_review_apply.add_argument(
+        "--in",
+        dest="input_path",
+        default="data/daily-run/agent-review/results.jsonl",
+        help="Host-agent semantic review results JSONL",
+    )
+    agent_review_apply.add_argument("--run", default=None, help="Run directory. Defaults to the parent of agent-review")
+    agent_review_apply.add_argument("--analysis", default=None, help="Optional analysis-manifest.jsonl path")
+    agent_review_apply.add_argument("--tasks", default=None, help="Optional semantic-review-tasks.jsonl path")
+    agent_review_apply.add_argument("--actions", default=None, help="Optional next-actions.jsonl path")
+    agent_review_apply.add_argument("--review-items", default=None, help="Optional human-review.jsonl path")
+    agent_review_apply.add_argument("--tags-config", default="configs/tags.example.yaml", help="Tag taxonomy YAML")
+    agent_review_apply.add_argument("--json", action="store_true", help="Emit JSON")
+    agent_review_apply.set_defaults(func=cmd_agent_review_apply)
 
     scan = subparsers.add_parser("scan", help="Create a privacy-first dry-run scan plan")
     scan.add_argument("roots", nargs="+", help="Root directories or files to scan")
@@ -347,6 +382,56 @@ def cmd_usage_event(args) -> int:
     else:
         print(payload.get("error", "usage event failed"), file=sys.stderr)
     return 0 if payload.get("ok") else 2
+
+
+def cmd_agent_task(args) -> int:
+    if args.kind != "semantic-review":
+        print(f"unsupported agent task kind: {args.kind}", file=sys.stderr)
+        return 2
+    payload = build_semantic_review_tasks(
+        actions_path=args.input_path,
+        output_dir=args.out,
+        analysis_path=args.analysis,
+        review_items_path=args.review_items,
+        tags_config_path=args.tags_config,
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        stats = payload["stats"]
+        print(f"agent_task: {payload['kind']}")
+        print(f"tasks: {stats['tasks']}")
+        print(f"skipped: {stats['skipped']}")
+        for name, path in payload["outputs"].items():
+            print(f"{name}: {path}")
+    return 0
+
+
+def cmd_agent_review_apply(args) -> int:
+    try:
+        payload = apply_semantic_review_results(
+            results_path=args.input_path,
+            run_dir=args.run,
+            analysis_path=args.analysis,
+            tasks_path=args.tasks,
+            actions_path=args.actions,
+            review_items_path=args.review_items,
+            tags_config_path=args.tags_config,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        stats = payload["stats"]
+        print("agent_review_apply:")
+        print(f"applied: {stats['applied']}")
+        print(f"rejected: {stats['rejected']}")
+        for group in ("analysis", "agent_review", "assets"):
+            for name, path in payload.get(group, {}).items():
+                print(f"{group}.{name}: {path}")
+    return 0 if payload.get("ok") else 1
 
 
 def cmd_scan(args) -> int:
@@ -679,6 +764,7 @@ def cmd_review(args) -> int:
     print(f"review_items: {len(items)}")
     for name, path in outputs.items():
         print(f"{name}: {path}")
+    print(f"recommended_review_server: anyfile-wiki review-server --review-dir {Path(args.out)} --once")
     for category, count in sorted(stats.items()):
         print(f"{category}: {count}")
     if reason_stats:
