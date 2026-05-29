@@ -53,6 +53,7 @@ from .run_state import (
     save_run_state,
 )
 from .scan import scan_paths
+from .sidecars import SIDECAR_LEVELS, attach_asset_ids, write_jsonl_records, write_sidecar_outputs
 from .tags import describe_tags_config, filter_tags, load_tags_config, tag_definitions
 
 
@@ -206,9 +207,29 @@ def build_parser() -> ArgumentParser:
     assets.add_argument("--out", default="data/assets", help="Asset index output directory")
     assets.add_argument("--html-out", default="data/html", help="Also refresh the HTML asset browser in this directory")
     assets.add_argument("--no-html", action="store_true", help="Only write asset JSON/Markdown, do not refresh HTML")
+    assets.add_argument("--no-sidecars", action="store_true", help="Only write asset JSON/Markdown, do not write sidecar indexes")
+    assets.add_argument(
+        "--sidecar-level",
+        choices=sorted(SIDECAR_LEVELS),
+        default="text",
+        help="Sidecar scan level: light reads metadata only; text also hashes extracted output_path text",
+    )
     assets.add_argument("--tags-config", default="configs/tags.example.yaml", help="Tag taxonomy YAML")
     assets.add_argument("--json", action="store_true", help="Emit JSON")
     assets.set_defaults(func=cmd_assets)
+
+    sidecars = subparsers.add_parser("sidecars", help="Backfill or refresh sidecar indexes from an asset-index.jsonl")
+    sidecars.add_argument("--asset-index", default="data/assets/asset-index.jsonl", help="Existing asset-index.jsonl path")
+    sidecars.add_argument("--out", default=None, help="Sidecar output directory. Defaults to the asset-index directory")
+    sidecars.add_argument(
+        "--sidecar-level",
+        choices=sorted(SIDECAR_LEVELS),
+        default="text",
+        help="Sidecar scan level: light reads metadata only; text also hashes extracted output_path text",
+    )
+    sidecars.add_argument("--dry-run", action="store_true", help="Print the sidecar plan without writing files")
+    sidecars.add_argument("--json", action="store_true", help="Emit JSON")
+    sidecars.set_defaults(func=cmd_sidecars)
 
     run = subparsers.add_parser("run", help="Run one resumable daily processing step with run-state.json")
     run.add_argument("roots", nargs="*", help="Root directories or files. Required when creating a new run state")
@@ -679,6 +700,8 @@ def cmd_assets(args) -> int:
         html_dir=None if args.no_html else args.html_out,
         tags_config=tags_config,
         source_path=analysis_path,
+        write_sidecars=not args.no_sidecars,
+        sidecar_level=args.sidecar_level,
     )
     if args.json:
         print(
@@ -697,6 +720,40 @@ def cmd_assets(args) -> int:
     print(f"records: {len(records)}")
     print(f"review_actions: {len(action_records)}")
     print(f"review_items: {len(review_items)}")
+    for name, path in outputs.items():
+        print(f"{name}: {path}")
+    return 0
+
+
+def cmd_sidecars(args) -> int:
+    asset_index_path = Path(args.asset_index)
+    if not asset_index_path.exists():
+        print(f"asset index file not found: {asset_index_path}", file=sys.stderr)
+        return 2
+    out_dir = Path(args.out) if args.out else asset_index_path.parent
+    records = attach_asset_ids(load_jsonl_records(asset_index_path))
+    outputs, stats = write_sidecar_outputs(
+        records,
+        out_dir,
+        sidecar_level=args.sidecar_level,
+        dry_run=bool(args.dry_run),
+        asset_index_path=asset_index_path,
+    )
+    if not args.dry_run:
+        write_jsonl_records(records, asset_index_path)
+    payload = {
+        "dry_run": bool(args.dry_run),
+        "records": len(records),
+        "stats": stats,
+        "outputs": {name: str(path) for name, path in outputs.items()},
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    action = "planned sidecars" if args.dry_run else "wrote sidecars"
+    print(f"{action}: {len(records)} records")
+    for key, value in stats.items():
+        print(f"{key}: {value}")
     for name, path in outputs.items():
         print(f"{name}: {path}")
     return 0

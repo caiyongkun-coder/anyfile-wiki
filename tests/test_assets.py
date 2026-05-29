@@ -7,6 +7,7 @@ from pathlib import Path
 
 from anyfile_wiki.assets import build_asset_index, write_asset_outputs_from_files
 from anyfile_wiki.cli import main as cli_main
+from anyfile_wiki.sidecars import asset_id_for_path
 
 
 def _run_cli(argv: list[str]) -> tuple[int, str, str]:
@@ -159,6 +160,8 @@ def test_build_asset_index_applies_review_actions_and_keeps_review_only_assets()
     by_name = {Path(record["path"]).name: record for record in records}
 
     assert len(records) == 5
+    assert by_name["project-note.md"]["asset_id"] == asset_id_for_path("C:/docs/project-note.md")
+    assert by_name["project-note.md"]["asset_id_strategy"] == "path_sha256_v1"
     assert by_name["project-note.md"]["asset_status"] == "ignore_candidate"
     assert by_name["project-note.md"]["review_requires_confirmation"] is True
     assert "topic/test_coverage" in by_name["project-note.md"]["tags"]
@@ -180,7 +183,10 @@ def test_write_asset_outputs_from_files_refreshes_agent_json_markdown_and_html(t
     analysis_path = tmp_path / "run" / "analyze" / "knowledge-index.jsonl"
     actions_path = tmp_path / "run" / "review" / "next-actions.jsonl"
     review_items_path = tmp_path / "run" / "review" / "human-review.jsonl"
-    _write_jsonl(analysis_path, [_analysis("C:/docs/manual.md")])
+    extracted_text = tmp_path / "run" / "extract" / "manual.md"
+    extracted_text.parent.mkdir(parents=True)
+    extracted_text.write_text("manual semantic analysis text", encoding="utf-8")
+    _write_jsonl(analysis_path, [_analysis("C:/docs/manual.md", output_path=str(extracted_text))])
     _write_jsonl(
         actions_path,
         [
@@ -233,10 +239,23 @@ def test_write_asset_outputs_from_files_refreshes_agent_json_markdown_and_html(t
 
     assert outputs["asset_index_jsonl"].exists()
     assert outputs["asset_index_md"].exists()
+    assert outputs["asset_signature_jsonl"].exists()
+    assert outputs["collection_index_jsonl"].exists()
+    assert outputs["asset_usage_events_jsonl"].exists()
+    assert outputs["asset_score_jsonl"].exists()
+    assert outputs["asset_sidecar_report_md"].exists()
     assert outputs["knowledge_index_html"].exists()
     asset_record = json.loads(outputs["asset_index_jsonl"].read_text(encoding="utf-8").splitlines()[0])
+    assert asset_record["asset_id"].startswith("asset:path-sha256:")
     assert asset_record["asset_status"] == "manual_reviewed"
     assert "topic/semantic_analysis" in asset_record["tags"]
+    signature = json.loads(outputs["asset_signature_jsonl"].read_text(encoding="utf-8").splitlines()[0])
+    assert signature["asset_id"] == asset_record["asset_id"]
+    assert signature["text_hash_status"] == "ok"
+    collection = json.loads(outputs["collection_index_jsonl"].read_text(encoding="utf-8").splitlines()[0])
+    assert collection["asset_id"] == asset_record["asset_id"]
+    score = json.loads(outputs["asset_score_jsonl"].read_text(encoding="utf-8").splitlines()[0])
+    assert score["asset_id"] == asset_record["asset_id"]
     markdown = outputs["asset_index_md"].read_text(encoding="utf-8")
     assert "数据资产索引" in markdown
     assert "人工整理" in markdown
@@ -285,8 +304,169 @@ def test_assets_cli_writes_closed_loop_outputs(tmp_path):
     assert code == 0, stderr
     assert "records: 1" in stdout
     assert "asset_index_jsonl" in stdout
+    assert "asset_signature_jsonl" in stdout
+    assert "asset_score_jsonl" in stdout
     assert (out_dir / "asset-index.jsonl").exists()
+    assert (out_dir / "asset-signature.jsonl").exists()
+    assert (out_dir / "collection-index.jsonl").exists()
+    assert (out_dir / "asset-usage-events.jsonl").exists()
+    assert (out_dir / "asset-score.jsonl").exists()
+    assert (out_dir / "asset-sidecar-report.md").exists()
     assert (html_dir / "knowledge-index.html").exists()
     record = json.loads((out_dir / "asset-index.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert record["asset_id"].startswith("asset:path-sha256:")
     assert record["asset_status"] == "confirmed"
     assert record["needs_human_review"] is False
+
+
+def test_asset_id_normalizes_windows_slashes_and_case():
+    assert asset_id_for_path("C:\\Docs\\Budget.XLSX") == asset_id_for_path("c:/docs/budget.xlsx")
+
+
+def test_sidecars_cli_dry_run_does_not_write_files(tmp_path):
+    asset_index = tmp_path / "asset-index.jsonl"
+    out_dir = tmp_path / "sidecars"
+    _write_jsonl(asset_index, [_analysis("C:/docs/confirmed.md", needs_human_review=False)])
+
+    code, stdout, stderr = _run_cli(
+        [
+            "sidecars",
+            "--asset-index",
+            str(asset_index),
+            "--out",
+            str(out_dir),
+            "--dry-run",
+            "--json",
+        ]
+    )
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert payload["dry_run"] is True
+    assert payload["records"] == 1
+    assert payload["stats"]["total_assets"] == 1
+    assert not (out_dir / "asset-signature.jsonl").exists()
+    assert "asset_id" not in json.loads(asset_index.read_text(encoding="utf-8").splitlines()[0])
+
+
+def test_sidecars_cli_backfills_asset_id_and_preserves_usage_events(tmp_path):
+    asset_index = tmp_path / "asset-index.jsonl"
+    out_dir = tmp_path
+    text_path = tmp_path / "extract.md"
+    text_path.write_text("same extracted text", encoding="utf-8")
+    _write_jsonl(
+        asset_index,
+        [
+            _analysis(
+                "C:/docs/FTP预算取数需求_ABCDEF1234.xlsx",
+                output_path=str(text_path),
+                source_extract_status="ok",
+                needs_human_review=False,
+                tags=["topic/business_budgeting"],
+            )
+        ],
+    )
+    usage_events = out_dir / "asset-usage-events.jsonl"
+    usage_events.write_text('{"asset_id":"keep","event_type":"used"}\n', encoding="utf-8")
+
+    code, stdout, stderr = _run_cli(["sidecars", "--asset-index", str(asset_index), "--out", str(out_dir)])
+
+    assert code == 0, stderr
+    assert "wrote sidecars: 1 records" in stdout
+    asset_record = json.loads(asset_index.read_text(encoding="utf-8").splitlines()[0])
+    assert asset_record["asset_id"].startswith("asset:path-sha256:")
+    signature = json.loads((out_dir / "asset-signature.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert signature["asset_id"] == asset_record["asset_id"]
+    assert signature["base_name_norm"] == "ftp预算取数需求"
+    assert signature["text_hash_status"] == "ok"
+    collection = json.loads((out_dir / "collection-index.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert collection["virtual_path"].startswith("02_FTP预算测算与取数/")
+    assert collection["relation_type"] == "master"
+    assert usage_events.read_text(encoding="utf-8") == '{"asset_id":"keep","event_type":"used"}\n'
+
+
+def test_sidecars_classify_curve_files_before_general_ftp(tmp_path):
+    asset_index = tmp_path / "asset-index.jsonl"
+    out_dir = tmp_path / "sidecars"
+    _write_jsonl(
+        asset_index,
+        [
+            _analysis(
+                "C:/docs/VP_FTP_收益率曲线.xlsx",
+                summary="收益率曲线和定价数据",
+                tags=["topic/financial_data"],
+                needs_human_review=False,
+            )
+        ],
+    )
+
+    code, stdout, stderr = _run_cli(["sidecars", "--asset-index", str(asset_index), "--out", str(out_dir)])
+
+    assert code == 0, stderr
+    collection = json.loads((out_dir / "collection-index.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert collection["virtual_path"].startswith("05_定价规则与曲线/")
+
+
+def test_sidecars_keep_review_only_assets_out_of_forced_merge(tmp_path):
+    asset_index = tmp_path / "asset-index.jsonl"
+    out_dir = tmp_path / "sidecars"
+    _write_jsonl(
+        asset_index,
+        [
+            _analysis(
+                "C:/docs/FTP业务解决方案-清远v1.0.1.doc",
+                output_path="",
+                source_extract_status="review_only",
+                parser="metadata_only",
+                needs_human_review=True,
+                extension=".doc",
+            ),
+            _analysis(
+                "C:/docs/FTP业务解决方案-清远v1.0.2.doc",
+                output_path="",
+                source_extract_status="review_only",
+                parser="metadata_only",
+                needs_human_review=True,
+                extension=".doc",
+            ),
+        ],
+    )
+
+    code, stdout, stderr = _run_cli(["sidecars", "--asset-index", str(asset_index), "--out", str(out_dir)])
+
+    assert code == 0, stderr
+    collections = [
+        json.loads(line)
+        for line in (out_dir / "collection-index.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len({record["collection_id"] for record in collections}) == 2
+    assert all(record["relation_type"] == "unknown" for record in collections)
+    assert all(record["review_required"] is True for record in collections)
+    assert all(record["virtual_path"].startswith("09_压缩包_不可解析_待复核/") for record in collections)
+
+
+def test_assets_cli_can_skip_sidecars(tmp_path):
+    analysis_path = tmp_path / "knowledge-index.jsonl"
+    actions_path = tmp_path / "next-actions.jsonl"
+    _write_jsonl(analysis_path, [_analysis("C:/docs/confirmed.md", needs_human_review=False)])
+    _write_jsonl(actions_path, [])
+    out_dir = tmp_path / "assets"
+
+    code, stdout, stderr = _run_cli(
+        [
+            "assets",
+            "--analysis",
+            str(analysis_path),
+            "--actions",
+            str(actions_path),
+            "--out",
+            str(out_dir),
+            "--no-html",
+            "--no-sidecars",
+        ]
+    )
+
+    assert code == 0, stderr
+    assert (out_dir / "asset-index.jsonl").exists()
+    assert not (out_dir / "asset-signature.jsonl").exists()

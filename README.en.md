@@ -1,10 +1,58 @@
-# AnyFile Wiki
+# AnyFile Wiki: turn scattered personal files into local knowledge assets for agents
 
 [中文](README.md) | English
 
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![License](https://img.shields.io/badge/License-Apache--2.0-green)
+![Privacy](https://img.shields.io/badge/Privacy-local--first-brightgreen)
+![Status](https://img.shields.io/badge/Status-MVP-orange)
+
 AnyFile Wiki is a local-first knowledge base for personal computer files. Its goal is to let local agents such as OpenClaw, Hermes, Codex, and similar tools safely inventory personal files during idle time, then gradually turn documents, notes, PDFs, spreadsheets, code, and app data into searchable, browsable, reusable knowledge assets.
 
-The project is currently at MVP0: solve "what is safe to touch" before parsing, summarizing, tagging, indexing, or compiling knowledge.
+It is not just another RAG chat app. AnyFile Wiki is a local file knowledge governance layer: it first decides what is safe to touch, then extracts, summarizes, tags, builds an asset index, creates virtual collections, and gives auditable archive/delete suggestions without moving, deleting, or renaming your original files.
+
+## One-Minute Overview
+
+```text
+Your real files stay exactly where they are
+        |
+Privacy policy decides what can be read, metadata-only, or fully denied
+        |
+Local extraction and analysis produce asset-index.jsonl
+        |
+Sidecar indexes add virtual collections, signatures, usage feedback, and archive suggestions
+        |
+Agents find assets through stable asset_id values, while humans browse and review HTML pages
+```
+
+Core promises:
+
+- Never move, delete, or rename original files.
+- Local-first by default; cloud LLM access requires explicit allowed paths and risk acknowledgement.
+- `deny` privacy rules always win: no reading, extraction, indexing, or embedding.
+- Archive/delete actions are suggestions only, never automatic operations.
+
+## What You Get
+
+After a run, agents can read these structured files first:
+
+```text
+asset-index.jsonl              Main asset index: path, summary, tags, analysis result
+asset-signature.jsonl          File-name normalization, mtime/size, extracted-text hash
+collection-index.jsonl         Virtual collections and virtual directories
+asset-usage-events.jsonl       Append-only event ledger for later search/open/citation usage
+asset-score.jsonl              Usage, retention, archive, and delete-risk scores
+knowledge-index.html           Local asset browser for humans
+human-review.html              Human review and approval page
+```
+
+This lets an agent answer:
+
+- What material do I have, and roughly what is it about?
+- Where is a file, and which version looks canonical?
+- Which files look like history, attachments, batches, or duplicate candidates?
+- Which files need human review?
+- Which files may be archived, and which should never be deleted?
 
 ## Why This Exists
 
@@ -39,7 +87,8 @@ AnyFile Wiki is meant to be a knowledge governance layer over the local filesyst
 - `anyfile-wiki review` for Markdown, JSONL, and `human-review.html` review outputs covering unreadable, unsupported, low-confidence, or cloud-unauthorized files.
 - `anyfile-wiki review-server` for a local `127.0.0.1` review service where the page submits decisions directly to local files.
 - `anyfile-wiki decisions` for reading `review-decisions.jsonl` exported from the HTML review page, then writing a summary, `next-actions.jsonl`, and `decision-plan.md`.
-- `anyfile-wiki assets` for applying human review actions back into the final `asset-index.jsonl` and refreshing the human HTML browser.
+- `anyfile-wiki assets` for applying human review actions back into the final `asset-index.jsonl`, refreshing the human HTML browser, and writing asset sidecar indexes by default.
+- `anyfile-wiki sidecars` for backfilling or refreshing `asset-signature.jsonl`, `collection-index.jsonl`, `asset-score.jsonl`, and the sidecar report from an existing `asset-index.jsonl`.
 - `anyfile-wiki html` for turning `knowledge-index.jsonl` into a local Chinese/English asset browser with a tag tree, pagination, filters, search, and file details.
 - Direct text extraction and lightweight Excel summaries are supported; MarkItDown and RapidOCR are optional parser dependencies.
 
@@ -160,6 +209,12 @@ anyfile-wiki decisions --decisions data/first-review/review-decisions.jsonl --ou
 # Apply review decisions into the final asset index and refresh the human HTML browser
 anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --actions data/first-review/next-actions.jsonl --review-items data/first-review/human-review.jsonl --out data/first-assets --html-out data/first-html
 
+# Backfill or refresh sidecar virtual collections for an existing asset index
+anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets
+
+# Preview the sidecar plan and statistics without writing files
+anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets --dry-run
+
 # Build the Chinese local HTML asset browser
 anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
@@ -182,6 +237,7 @@ docs/
   mvp2-analysis.md           MVP2 content analysis guide
   mvp2-review-llm.md         MVP2.1 LLM policy and human review guide
   mvp3-html-browser.md       MVP3 HTML asset browser guide
+  asset-sidecars.md          Asset sidecar index guide
   agent-lifecycle.md         Agent lifecycle and daily run guide
 src/anyfile_wiki/
   policy.py                  Privacy policy engine
@@ -197,6 +253,7 @@ src/anyfile_wiki/
   review.py                  Human review list builder
   decisions.py               Human decisions and agent follow-up action plans
   assets.py                  Final asset index merger after human review
+  sidecars.py                Asset signatures, virtual collections, and score sidecars
   llm_config.py              LLM policy config parser
   html.py                    Local HTML asset browser generator
   cli.py                     CLI entry point
@@ -253,6 +310,7 @@ Current tests cover:
 - Real LLM/API analysis entry points, cloud authorization gates, and JSON response parsing.
 - Static HTML asset browser generation, Chinese UI text, and CLI output.
 - Human review actions applied into `asset-index.jsonl`, plus review-server submit refreshing asset JSON/HTML.
+- Asset sidecar output, stable `asset_id` generation, virtual collections, dry-run behavior, and event-ledger protection.
 
 ## Docs
 
@@ -267,6 +325,7 @@ Current tests cover:
 - [MVP2 Content Analysis Guide](docs/mvp2-analysis.md)
 - [MVP2.1 LLM Policy and Human Review Guide](docs/mvp2-review-llm.md)
 - [MVP3 HTML Asset Browser Guide](docs/mvp3-html-browser.md)
+- [Asset Sidecar Index Guide](docs/asset-sidecars.md)
 - [Agent Lifecycle and Daily Run Guide](docs/agent-lifecycle.md)
 
 ## License

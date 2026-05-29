@@ -7,6 +7,7 @@ from typing import Any, Iterable
 import json
 
 from .html import write_knowledge_browser_html
+from .sidecars import ASSET_ID_STRATEGY, asset_id_for_path, attach_asset_ids, write_sidecar_outputs
 from .tags import load_tags_config
 
 
@@ -99,8 +100,10 @@ def write_asset_outputs(
     html_dir: str | Path | None = None,
     tags_config: dict[str, Any] | None = None,
     source_path: str | Path | None = None,
+    write_sidecars: bool = True,
+    sidecar_level: str = "text",
 ) -> dict[str, Path]:
-    assets = list(records)
+    assets = attach_asset_ids(records)
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
     jsonl_path = root / "asset-index.jsonl"
@@ -111,6 +114,14 @@ def write_asset_outputs(
         "asset_index_jsonl": jsonl_path,
         "asset_index_md": md_path,
     }
+    if write_sidecars:
+        sidecar_outputs, _stats = write_sidecar_outputs(
+            assets,
+            root,
+            sidecar_level=sidecar_level,
+            asset_index_path=jsonl_path,
+        )
+        outputs.update(sidecar_outputs)
     if html_dir is not None:
         outputs.update(
             write_knowledge_browser_html(
@@ -131,6 +142,8 @@ def write_asset_outputs_from_files(
     review_items_path: str | Path | None = None,
     html_dir: str | Path | None = None,
     tags_config: dict[str, Any] | None = None,
+    write_sidecars: bool = True,
+    sidecar_level: str = "text",
 ) -> dict[str, Path]:
     analysis_records = load_jsonl_records(analysis_path)
     review_actions = load_jsonl_records(actions_path)
@@ -142,6 +155,8 @@ def write_asset_outputs_from_files(
         html_dir=html_dir,
         tags_config=tags_config,
         source_path=analysis_path,
+        write_sidecars=write_sidecars,
+        sidecar_level=sidecar_level,
     )
 
 
@@ -325,6 +340,8 @@ def _apply_action_fields(
 
     record["tags"] = all_tags
     record["primary_tag"] = _text(record.get("primary_tag") or (all_tags[0] if all_tags else ""))
+    record["asset_id"] = _text(record.get("asset_id")) or asset_id_for_path(record.get("path"))
+    record["asset_id_strategy"] = _text(record.get("asset_id_strategy")) or ASSET_ID_STRATEGY
     record["asset_schema_version"] = ASSET_SCHEMA_VERSION
     record["asset_generated_at"] = generated_at
     record["asset_source"] = asset_source

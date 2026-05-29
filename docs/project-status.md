@@ -30,6 +30,7 @@
 - `anyfile-wiki decisions` 可读取 `review-decisions.jsonl`，生成批复摘要、`next-actions.jsonl` 和 `decision-plan.md`。
 - `next-actions.jsonl` 已能把人类批复转成 agent 后续动作：本地 LLM 复核队列、云端授权候选、忽略候选、人工标签覆盖、稍后复核和保持隐私。
 - 新增 `anyfile-wiki assets`，可把 `knowledge-index.jsonl`、`human-review.jsonl` 和 `next-actions.jsonl` 合并为最终 `asset-index.jsonl`、`asset-index.md`，并刷新 `knowledge-index.html`。
+- 新增资产 sidecar 索引：`asset-signature.jsonl`、`collection-index.jsonl`、`asset-usage-events.jsonl`、`asset-score.jsonl` 和 `asset-sidecar-report.md`，让 agent 能通过 `asset_id` 串联主索引、虚拟资料族和文件管理建议。
 - `review-server` 服务版提交后，如果处在标准 run 目录结构中，会自动生成/刷新 `assets/asset-index.jsonl` 和 `html/knowledge-index.html`。
 - 资产页已能展示资产状态、人工批复、后续动作、二次确认、人工标签和隐私冲突提示。
 - `review-decisions.jsonl` 读取已兼容 Windows PowerShell 常见的 UTF-8 BOM 文件。

@@ -90,6 +90,10 @@ def test_run_command_progresses_to_complete_with_small_limits(tmp_path):
     assert (out_dir / "review" / "human-review.html").exists()
     assert (out_dir / "assets" / "asset-index.jsonl").exists()
     assert (out_dir / "assets" / "asset-index.md").exists()
+    assert (out_dir / "assets" / "asset-signature.jsonl").exists()
+    assert (out_dir / "assets" / "collection-index.jsonl").exists()
+    assert (out_dir / "assets" / "asset-score.jsonl").exists()
+    assert (out_dir / "assets" / "asset-sidecar-report.md").exists()
     assert (out_dir / "html" / "knowledge-index.html").exists()
     assert len((out_dir / "analyze" / "analysis-manifest.jsonl").read_text(encoding="utf-8").splitlines()) == 2
     assert "assets" in state["stages"]
