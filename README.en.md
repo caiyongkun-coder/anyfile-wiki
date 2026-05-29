@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/License-Apache--2.0-green)
 ![Privacy](https://img.shields.io/badge/Privacy-local--first-brightgreen)
-![Status](https://img.shields.io/badge/Status-MVP-orange)
+![Status](https://img.shields.io/badge/Status-MVP4--ready-orange)
 
 AnyFile Wiki is a local-first knowledge base for personal computer files. Its goal is to let local agents such as OpenClaw, Hermes, Codex, and similar tools safely inventory personal files during idle time, then gradually turn documents, notes, PDFs, spreadsheets, code, and app data into searchable, browsable, reusable knowledge assets.
 
@@ -76,6 +76,9 @@ AnyFile Wiki is meant to be a knowledge governance layer over the local filesyst
 - Default excludes for system folders, developer noise, dangerous extensions, installers, caches, and temporary files.
 - Dry-run scanning that only traverses paths and metadata; it does not read file bodies.
 - Outputs `scan-plan.md`, `access-log.jsonl`, and `inventory.sqlite`.
+- `anyfile-wiki agent-init` for creating agent-readable profile, privacy, roots, and idle-scan configs.
+- `anyfile-wiki query` for searching existing asset indexes and sidecars without rescanning original files.
+- `anyfile-wiki usage-event` for recording agent selections, opens, citations, and search hits.
 - CLI commands: `anyfile-wiki privacy`, `anyfile-wiki status`, `anyfile-wiki list`, `anyfile-wiki show`, `anyfile-wiki roots`, `anyfile-wiki tags`.
 - `anyfile-wiki run` for resumable daily runs with `run-state.json`, progressing scan, extraction, analysis, review outputs, and the HTML asset browser in small steps.
 - `anyfile-wiki extract` for files allowed by policy.
@@ -94,51 +97,43 @@ AnyFile Wiki is meant to be a knowledge governance layer over the local filesyst
 
 ## Quick Start
 
-The recommended contributor setup is an editable install. This makes the `anyfile-wiki ...` command available from normal working directories:
+Since MVP4, the recommended path is to install the Agent Skill first, then let Codex / OpenClaw / Hermes guide setup, daily runs, review, and asset queries.
 
 ```powershell
+python scripts/install_agent_skill.py --editable --extras parse,ocr
+anyfile-wiki agent-init --profile configs/agent-profile.yaml --out data/daily-run
+```
+
+Then tell your agent:
+
+```text
+Use AnyFile Wiki to initialize my scan roots and explain the privacy config.
+Continue the AnyFile Wiki daily scan.
+Find where my budget measurement files are.
+```
+
+For CLI debugging, use the developer commands below. `anyfile-wiki scan` is always a safe dry-run: it creates an access plan and inventory, but does not read file bodies, summarize files, or write vectors.
+
+## Developer Commands
+
+```powershell
+# Install the package without installing the Skill
 python -m pip install -e .[dev]
-python -m pip install -e .[parse]  # Office/PDF document parsing
-python -m pip install -e .[ocr]    # Image OCR
+python -m pip install -e .[parse]
+python -m pip install -e .[ocr]
 
-if (-not (Test-Path configs/privacy.yaml)) {
-    Copy-Item configs/privacy.example.yaml configs/privacy.yaml
-}
+# Preview Skill installation without writing files
+python scripts/install_agent_skill.py --dry-run
 
-New-Item -ItemType Directory -Force "$env:TEMP\anyfile-wiki-mvp0-smoke" | Out-Null
-"hello from AnyFile Wiki" | Set-Content -Encoding UTF8 "$env:TEMP\anyfile-wiki-mvp0-smoke\note.txt"
+# Initialize agent-readable configs
+anyfile-wiki agent-init --profile configs/agent-profile.yaml --out data/daily-run
 
-anyfile-wiki scan "$env:TEMP\anyfile-wiki-mvp0-smoke" --privacy configs/privacy.yaml --out data/smoke --max-entries 50
-anyfile-wiki status --inventory data/smoke/inventory.sqlite --sources
-anyfile-wiki list --inventory data/smoke/inventory.sqlite
-anyfile-wiki tags --tags-config configs/tags.example.yaml --dimension topic
-anyfile-wiki extract --inventory data/smoke/inventory.sqlite --out data/smoke-extract
-anyfile-wiki extracts --inventory data/smoke/inventory.sqlite --stats
-anyfile-wiki analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze
-anyfile-wiki analyze --inventory data/smoke/inventory.sqlite --out data/smoke-analyze-codex --method codex-mock --compare-to data/smoke-analyze/analysis-manifest.jsonl
-anyfile-wiki review --inventory data/smoke/inventory.sqlite --analysis data/smoke-analyze/analysis-manifest.jsonl --out data/smoke-review
-anyfile-wiki html --analysis data/smoke-analyze/knowledge-index.jsonl --out data/smoke-html
+# Query existing asset indexes without rescanning original files
+anyfile-wiki query "budget" --profile configs/agent-profile.yaml --json
 
-# Daily idle-run entry point: repeat the same command and it continues from run-state.json
-anyfile-wiki run "$env:TEMP\anyfile-wiki-mvp0-smoke" --out data/smoke-run --max-scan-entries 50 --extract-limit 20 --analyze-limit 20
+# Record agent usage feedback
+anyfile-wiki usage-event --asset-id "<asset_id>" --event cited --query "budget"
 
-# After opening data/smoke-review/human-review.html and exporting review-decisions.jsonl:
-# anyfile-wiki decisions --decisions data/smoke-review/review-decisions.jsonl --out data/smoke-review/decisions-summary.md --actions-out data/smoke-review/next-actions.jsonl --plan-out data/smoke-review/decision-plan.md
-# anyfile-wiki assets --analysis data/smoke-analyze/knowledge-index.jsonl --actions data/smoke-review/next-actions.jsonl --review-items data/smoke-review/human-review.jsonl --out data/smoke-assets --html-out data/smoke-html
-```
-
-If you do not install the package and only want to run the CLI temporarily from the source tree, set `PYTHONPATH` in the current PowerShell session first, then run the package module directly:
-
-```powershell
-$env:PYTHONPATH = 'src'
-python -m anyfile_wiki analyze --help
-```
-
-In MVP0, `anyfile-wiki scan` is a dry-run: it creates an access plan and an inventory, but it does not read file content, summarize files, or write vectors.
-
-## Common Commands
-
-```powershell
 # Show suggested personal scan roots
 anyfile-wiki roots --include-missing
 
@@ -223,12 +218,14 @@ anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data
 
 ```text
 configs/
+  schedule.example.yaml      Example idle scan schedule
   roots.example.yaml         Example recommended scan roots
   tags.example.yaml          Example tag taxonomy
   llm.example.yaml           Example LLM and cloud-read policy
   excludes.default.yaml      Default exclude rules
   privacy.example.yaml       Example user privacy policy
 docs/
+  agent-skill.md             Agent Skill and cross-agent adapter guide
   configuration.md           Configuration guide
   privacy-setup.md           Privacy setup and agent-readable policy guide
   roots-setup.md             Recommended scan roots setup guide
@@ -239,7 +236,12 @@ docs/
   mvp3-html-browser.md       MVP3 HTML asset browser guide
   asset-sidecars.md          Asset sidecar index guide
   agent-lifecycle.md         Agent lifecycle and daily run guide
+skills/
+  anyfile-wiki/SKILL.md      Codex Skill entry point
+scripts/
+  install_agent_skill.py     One-command package and Skill installer
 src/anyfile_wiki/
+  agent.py                   Agent profile, query, and usage event entry points
   policy.py                  Privacy policy engine
   scan.py                    Dry-run scanner
   inventory.py               SQLite inventory
@@ -268,7 +270,7 @@ tests/
 - MVP2: local summaries, tags, topics, projects, and file-type classification.
 - MVP2.1: LLM policy, cloud authorization boundaries, and human review lists.
 - MVP3: human-browsable asset map. The HTML asset browser, human review page, local submit service, and review writeback to `asset-index.jsonl` are now implemented.
-- MVP4: agent skill / MCP integration for OpenClaw, Hermes, Codex, and similar agents.
+- MVP4: agent skill / MCP integration. The Codex Skill, agent init, index query, and usage-event entry points are now implemented.
 - MVP5: safe cleanup assistant: duplicates, archive candidates, delete candidates, reversible manifests.
 - MVP6: app personal-data adapters: browser bookmarks, chat exports, email, note apps, and more.
 
@@ -299,6 +301,7 @@ Current tests cover:
 - Dry-run scanning without reading file bodies.
 - Inventory queries.
 - CLI `status/list/show`.
+- Agent init, index query, usage events, and Skill installation.
 - Suggested scan root discovery.
 - Recommended scan roots config explanation and JSON output.
 - Parser-job policy gating.
@@ -316,6 +319,7 @@ Current tests cover:
 
 - [Project Start](PROJECT_START.md)
 - [Development Plan](DEVELOPMENT_PLAN.md)
+- [Agent Skill Guide](docs/agent-skill.md)
 - [Configuration Guide](docs/configuration.md)
 - [Privacy Setup Guide](docs/privacy-setup.md)
 - [Recommended Scan Roots Setup Guide](docs/roots-setup.md)

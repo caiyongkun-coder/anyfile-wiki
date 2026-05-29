@@ -1,6 +1,6 @@
 # AnyFile Wiki 当前状态
 
-更新日期：2026-05-28
+更新日期：2026-05-29
 
 ## 仓库状态
 
@@ -40,11 +40,17 @@
 - 导出批复后，按钮会动画变成 `✓ 导出完成 / Exported`；后续再修改批复会恢复为待导出状态。
 - 当浏览器拦截下载或剪贴板时，人工复核页可直接显示 JSONL 文本，方便手动复制保存。
 - 服务版批复页面隐藏 JSONL 复制、显示和导出按钮，只保留保存草稿和提交批复。
+- 新增 MVP4 Agent Skill 入口：`skills/anyfile-wiki/SKILL.md`。
+- 新增一行安装脚本：`python scripts/install_agent_skill.py --editable --extras parse,ocr`。
+- 新增 `anyfile-wiki agent-init`，可生成 agent 可读的 profile、隐私策略、扫描目录和空闲扫描配置。
+- 新增 `anyfile-wiki query`，可直接查询 `asset-index.jsonl`、`collection-index.jsonl` 和 `asset-score.jsonl`，不重新扫描原文件。
+- 新增 `anyfile-wiki usage-event`，可把 agent 的选择、打开、引用和搜索命中追加到 `asset-usage-events.jsonl`。
+- 新增 `docs/agent-skill.md` 和 `configs/schedule.example.yaml`，说明 Codex Skill 与 OpenClaw/Hermes 通用适配约定。
 
 ## 最新验证
 
-- `python -m pytest -q`：`82 passed`
-- `anyfile-wiki --help` 已包含 `decisions` 和 `assets` 命令。
+- `python -m pytest -q`：`103 passed`
+- `anyfile-wiki --help` 已包含 `agent-init`、`query`、`usage-event`、`decisions` 和 `assets` 命令。
 - `anyfile-wiki run --help` 已包含 `run-state.json` 日常运行入口。
 - 演示页已生成：
   - `data/review-html-demo/human-review.html`

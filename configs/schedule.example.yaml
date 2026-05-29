@@ -1,0 +1,39 @@
+# AnyFile Wiki idle scan schedule example.
+#
+# Copy to configs/schedule.yaml during agent initialization. This file is only
+# a plan that an agent can explain and use. MVP4 does not automatically create
+# Windows Task Scheduler jobs or cron entries.
+
+version: 1
+
+assistant:
+  purpose: "Tell agents how to continue AnyFile Wiki work during idle time without asking humans to remember CLI commands."
+  safety_notes:
+    - "This schedule is advisory. Do not register OS-level scheduled tasks unless the user explicitly confirms."
+    - "Each run must continue through run-state.json and must keep privacy.yaml/excludes.default.yaml in force."
+    - "If human-review.html is generated, pause and ask the user to review before treating uncertain files as confirmed."
+  setup_questions:
+    - "Do you want manual-only runs, or should the agent suggest a local scheduled task?"
+    - "How many files may one idle run inspect before pausing?"
+    - "Should OCR and Office parsing be enabled on this machine?"
+
+schedule:
+  enabled: false
+  mode: manual
+  # Suggested values for a future Windows Task Scheduler / cron setup. They are
+  # not activated automatically.
+  cadence: daily
+  idle_only: true
+  timezone: local
+
+budgets:
+  max_scan_entries: 500
+  extract_limit: 100
+  analyze_limit: 100
+  review_limit: 1000
+  extract_timeout_seconds: 0
+
+commands:
+  first_run_template: 'anyfile-wiki run "<scan-root>" --privacy configs/privacy.yaml --out data/daily-run --max-scan-entries 500 --extract-limit 100 --analyze-limit 100'
+  continue_template: "anyfile-wiki run --out data/daily-run"
+  status_template: "anyfile-wiki run --out data/daily-run --status"

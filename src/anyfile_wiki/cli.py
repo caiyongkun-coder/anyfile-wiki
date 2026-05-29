@@ -7,6 +7,14 @@ import json
 from pathlib import Path
 import sys
 
+from .agent import (
+    USAGE_EVENT_TYPES,
+    append_usage_event,
+    format_agent_init_summary,
+    format_query_results,
+    initialize_agent_workspace,
+    query_assets,
+)
 from .analyze import (
     AnalysisResult,
     analyze_extract_records,
@@ -58,8 +66,33 @@ from .tags import describe_tags_config, filter_tags, load_tags_config, tag_defin
 
 
 def build_parser() -> ArgumentParser:
-    parser = ArgumentParser(prog="anyfile-wiki", description="AnyFile Wiki MVP0 CLI")
+    parser = ArgumentParser(prog="anyfile-wiki", description="AnyFile Wiki CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    agent_init = subparsers.add_parser("agent-init", help="Initialize agent-readable AnyFile Wiki configs")
+    agent_init.add_argument("--profile", default="configs/agent-profile.yaml", help="Agent profile YAML to create or read")
+    agent_init.add_argument("--out", default="data/daily-run", help="Default daily run output directory")
+    agent_init.add_argument("--roots-config", default=None, help="Optional roots.yaml target path")
+    agent_init.add_argument("--privacy", default=None, help="Optional privacy.yaml target path")
+    agent_init.add_argument("--schedule", default=None, help="Optional schedule.yaml target path")
+    agent_init.add_argument("--json", action="store_true", help="Emit JSON")
+    agent_init.set_defaults(func=cmd_agent_init)
+
+    query = subparsers.add_parser("query", help="Search existing asset indexes without reading original files")
+    query.add_argument("query", help="Keyword, topic, file name, or file type to search for")
+    query.add_argument("--profile", default="configs/agent-profile.yaml", help="Agent profile YAML")
+    query.add_argument("--limit", type=int, default=10, help="Maximum matches to return")
+    query.add_argument("--json", action="store_true", help="Emit JSON")
+    query.set_defaults(func=cmd_query)
+
+    usage_event = subparsers.add_parser("usage-event", help="Append an agent usage event for one asset")
+    usage_event.add_argument("--asset-id", required=True, help="Asset id from asset-index.jsonl")
+    usage_event.add_argument("--event", required=True, choices=sorted(USAGE_EVENT_TYPES), help="Usage event type")
+    usage_event.add_argument("--profile", default="configs/agent-profile.yaml", help="Agent profile YAML")
+    usage_event.add_argument("--query", default="", help="Optional query that led to this event")
+    usage_event.add_argument("--note", default="", help="Optional short note")
+    usage_event.add_argument("--json", action="store_true", help="Emit JSON")
+    usage_event.set_defaults(func=cmd_usage_event)
 
     scan = subparsers.add_parser("scan", help="Create a privacy-first dry-run scan plan")
     scan.add_argument("roots", nargs="+", help="Root directories or files to scan")
@@ -269,6 +302,51 @@ def build_parser() -> ArgumentParser:
     html.set_defaults(func=cmd_html)
 
     return parser
+
+
+def cmd_agent_init(args) -> int:
+    summary = initialize_agent_workspace(
+        profile_path=args.profile,
+        out_dir=args.out,
+        roots_config=args.roots_config,
+        privacy_config=args.privacy,
+        schedule_config=args.schedule,
+    )
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    else:
+        print(format_agent_init_summary(summary))
+    return 0
+
+
+def cmd_query(args) -> int:
+    payload = query_assets(args.query, profile_path=args.profile, limit=args.limit)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(format_query_results(payload))
+    return 0 if payload.get("ok") else 2
+
+
+def cmd_usage_event(args) -> int:
+    try:
+        payload = append_usage_event(
+            asset_id=args.asset_id,
+            event_type=args.event,
+            profile_path=args.profile,
+            query=args.query,
+            note=args.note,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif payload.get("ok"):
+        print(f"wrote usage event: {payload['event_path']}")
+    else:
+        print(payload.get("error", "usage event failed"), file=sys.stderr)
+    return 0 if payload.get("ok") else 2
 
 
 def cmd_scan(args) -> int:
