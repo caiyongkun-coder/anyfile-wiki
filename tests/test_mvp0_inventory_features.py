@@ -264,6 +264,23 @@ def test_inventory_counts_lists_recent_and_finds_records_by_path(tmp_path):
         assert _access_policy(metadata_record) == "metadata_only"
 
 
+def test_inventory_marks_records_missing_after_full_rescan(tmp_path):
+    inventory_mod = _inventory_module()
+    inventory_path, entries = _seed_inventory(tmp_path)
+    current_paths = [entry.path for entry in entries[1:]]
+
+    with inventory_mod.Inventory(inventory_path) as inventory:
+        marked = inventory.mark_missing_under_roots([tmp_path], current_paths)
+        stats = _call_policy_stats(inventory)
+        all_records = _call_all_records(inventory)
+        missing_record = _call_record_by_path(inventory, tmp_path / "old-allow.md")
+
+    assert marked == 1
+    assert stats.get("allow", 0) == 0
+    assert "old-allow.md" not in _name_set(all_records)
+    assert missing_record["exists_now"] is False
+
+
 def test_cli_status_list_and_show_read_inventory(tmp_path):
     inventory_path, _entries = _seed_inventory(tmp_path)
 

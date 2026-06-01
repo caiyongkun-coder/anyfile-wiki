@@ -348,3 +348,13 @@ def test_descriptive_privacy_fields_are_agent_readable_and_do_not_change_rules(t
     engine = _make_engine(policy_mod, policy_data=policy_data)
     _assert_kind(engine.decide(private / "secret.md"), "deny")
     _assert_kind(engine.decide(root / "note.md"), "allow")
+
+
+def test_policy_requires_explicit_allow_by_default(tmp_path):
+    policy_mod = _policy_module()
+    engine = _make_engine(policy_mod, policy_data={})
+
+    decision = engine.decide(tmp_path / "unlisted.md")
+
+    _assert_kind(decision, "deny")
+    assert _value(decision, "policy_source") == "privacy.require_allow"

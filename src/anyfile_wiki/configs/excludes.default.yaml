@@ -1,0 +1,193 @@
+# 默认排除规则。
+# 这些规则用于减少系统噪声、开发产物、临时文件和高风险敏感文件。
+# 用户隐私配置中的 deny 与这里的排除规则都应在读取文件内容前生效。
+
+version: 1
+
+system_directories:
+  windows:
+    paths:
+      - "C:/Windows"
+      - "C:/Program Files"
+      - "C:/Program Files (x86)"
+      - "C:/ProgramData/Microsoft"
+      - "C:/$Recycle.Bin"
+      - "C:/System Volume Information"
+      - "${USERPROFILE}/AppData/Local/Microsoft/Windows"
+      - "${USERPROFILE}/AppData/Local/Packages"
+      - "${USERPROFILE}/AppData/Local/Temp"
+      - "${USERPROFILE}/AppData/Roaming/Microsoft/Windows"
+    globs:
+      - "**/$Recycle.Bin/**"
+      - "**/System Volume Information/**"
+      - "**/Recovery/**"
+      - "**/Windows.old/**"
+      - "**/AppData/Local/Temp/**"
+      - "**/AppData/Local/Microsoft/Windows/**"
+
+  macos:
+    paths:
+      - "/System"
+      - "/Library"
+      - "/private"
+      - "/Volumes"
+      - "${HOME}/Library/Caches"
+      - "${HOME}/Library/Logs"
+      - "${HOME}/Library/Application Support"
+    globs:
+      - "**/.Trash/**"
+      - "**/Library/Caches/**"
+      - "**/Library/Logs/**"
+
+  linux:
+    paths:
+      - "/bin"
+      - "/boot"
+      - "/dev"
+      - "/etc"
+      - "/lib"
+      - "/lib64"
+      - "/proc"
+      - "/run"
+      - "/sbin"
+      - "/sys"
+      - "/tmp"
+      - "/usr"
+      - "/var/cache"
+      - "/var/log"
+    globs:
+      - "**/.cache/**"
+      - "**/.local/share/Trash/**"
+
+development_noise:
+  directory_names:
+    - ".git"
+    - ".hg"
+    - ".svn"
+    - ".idea"
+    - ".vscode"
+    - ".vs"
+    - "node_modules"
+    - "bower_components"
+    - "vendor"
+    - ".venv"
+    - "venv"
+    - "env"
+    - "__pycache__"
+    - ".pytest_cache"
+    - ".mypy_cache"
+    - ".ruff_cache"
+    - ".tox"
+    - ".gradle"
+    - ".next"
+    - ".nuxt"
+    - ".turbo"
+    - ".parcel-cache"
+    - "target"
+    - "dist"
+    - "build"
+    - "out"
+    - "coverage"
+
+  globs:
+    - "**/Cargo.lock"
+    - "**/package-lock.json"
+    - "**/pnpm-lock.yaml"
+    - "**/yarn.lock"
+    - "**/poetry.lock"
+    - "**/uv.lock"
+    - "**/*.pyc"
+    - "**/*.pyo"
+    - "**/*.class"
+    - "**/*.o"
+    - "**/*.obj"
+    - "**/*.dll"
+    - "**/*.so"
+    - "**/*.dylib"
+
+dangerous_extensions:
+  # 密钥、证书、密码库、令牌、钱包和应用内部数据库默认不读取。
+  extensions:
+    - ".pem"
+    - ".key"
+    - ".p12"
+    - ".pfx"
+    - ".crt"
+    - ".cer"
+    - ".der"
+    - ".csr"
+    - ".asc"
+    - ".gpg"
+    - ".age"
+    - ".kdbx"
+    - ".env"
+    - ".sqlite"
+    - ".sqlite3"
+    - ".db"
+    - ".ldb"
+    - ".logins"
+    - ".wallet"
+
+  filenames:
+    - ".env"
+    - ".env.local"
+    - ".env.production"
+    - ".npmrc"
+    - ".pypirc"
+    - ".netrc"
+    - "id_rsa"
+    - "id_dsa"
+    - "id_ecdsa"
+    - "id_ed25519"
+    - "known_hosts"
+    - "Cookies"
+    - "Login Data"
+    - "Local State"
+    - "keychain-2.db"
+    - "wallet.dat"
+
+installer_packages:
+  extensions:
+    - ".exe"
+    - ".msi"
+    - ".msp"
+    - ".msix"
+    - ".appx"
+    - ".dmg"
+    - ".pkg"
+    - ".deb"
+    - ".rpm"
+    - ".apk"
+    - ".ipa"
+    - ".iso"
+    - ".cab"
+
+  globs:
+    - "**/*setup*.zip"
+    - "**/*Setup*.zip"
+    - "**/*installer*.zip"
+    - "**/*Installer*.zip"
+    - "**/*install*.tar.gz"
+    - "**/*Install*.tar.gz"
+
+temporary_and_cache_patterns:
+  globs:
+    - "**/*.tmp"
+    - "**/*.temp"
+    - "**/*.bak"
+    - "**/*.swp"
+    - "**/*.swo"
+    - "**/*~"
+    - "**/~$*"
+    - "**/.DS_Store"
+    - "**/Thumbs.db"
+    - "**/desktop.ini"
+    - "**/Cache/**"
+    - "**/Caches/**"
+    - "**/.cache/**"
+    - "**/Temp/**"
+    - "**/tmp/**"
+    - "**/.Trash/**"
+    - "**/Crashpad/**"
+    - "**/Code Cache/**"
+    - "**/GPUCache/**"

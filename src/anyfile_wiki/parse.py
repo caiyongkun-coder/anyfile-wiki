@@ -46,6 +46,7 @@ TEXT_EXTENSIONS = {
 
 OCR_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 SPREADSHEET_EXTENSIONS = {".xls", ".xlsx"}
+MAX_DIRECT_TEXT_BYTES = 25 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -214,6 +215,16 @@ def write_manifest(results: list[ExtractResult], path: str | Path) -> None:
 
 def _extract_direct_text(job: ParseJob, output_dir: Path) -> ExtractResult:
     try:
+        size_bytes = job.source_size_bytes
+        if size_bytes is None:
+            size_bytes = job.path.stat().st_size
+        if size_bytes > MAX_DIRECT_TEXT_BYTES:
+            return _result(
+                job,
+                "skipped",
+                None,
+                f"direct_text source too large: {size_bytes} bytes > {MAX_DIRECT_TEXT_BYTES} bytes",
+            )
         text = _read_text(job.path)
         output = output_dir / "text" / _artifact_name(job.path)
         output.parent.mkdir(parents=True, exist_ok=True)

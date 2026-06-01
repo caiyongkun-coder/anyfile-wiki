@@ -9,6 +9,8 @@ import os
 
 import yaml
 
+from .defaults import load_default_yaml
+
 
 POLICY_DENY = "deny"
 POLICY_METADATA_ONLY = "metadata_only"
@@ -109,9 +111,7 @@ def load_policy(path: str | os.PathLike[str] | None) -> dict[str, Any]:
 
 def load_excludes(path: str | os.PathLike[str] | None) -> dict[str, Any]:
     if path is None:
-        default_path = Path(__file__).resolve().parents[2] / "configs" / "excludes.default.yaml"
-        if default_path.exists():
-            return _load_yaml(default_path)
+        return load_default_yaml("excludes.default.yaml")
     return _load_yaml(path)
 
 
@@ -148,7 +148,7 @@ def describe_privacy_policy(config: dict[str, Any] | None) -> dict[str, Any]:
             )
         ),
         "priority": priority,
-        "require_allow": bool(config.get("require_allow", False)),
+        "require_allow": bool(config.get("require_allow", True)),
         "path_syntax": _string_list(assistant.get("path_syntax"))
         or [
             "跨平台路径建议使用 / 作为分隔符。",
@@ -221,7 +221,7 @@ class PolicyEngine:
     ) -> None:
         self.privacy = privacy or policy or {}
         self.excludes = excludes or default_excludes or {}
-        configured_require_allow = self.privacy.get("require_allow")
+        configured_require_allow = self.privacy.get("require_allow", True)
         self.require_allow = bool(configured_require_allow if require_allow is None else require_allow)
 
     @classmethod

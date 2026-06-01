@@ -1,0 +1,356 @@
+# AnyFile Wiki tag taxonomy example.
+#
+# This file defines the first shared tag system for humans, agents, and future
+# HTML review UI. It is not a privacy grant and does not move or rename files.
+# Copy to configs/tags.yaml before machine-specific customization.
+#
+# Design inherited from widely used tools:
+# - Paperless-ngx: document_type, correspondent, tags, storage/search fields.
+# - Zotero: collections for hierarchy, tags for portable detail, auto tags kept separate.
+# - Obsidian: nested slash tags that can be browsed as a tree.
+# - Notion: structured properties instead of one flat tag list.
+# - Google Drive labels: metadata can drive governance and sensitive handling.
+# - TagSpaces: local-first sidecar metadata instead of vendor lock-in.
+# - PARA / Johnny.Decimal: small stable browsing hierarchy for humans.
+
+version: 1
+
+assistant:
+  purpose: "定义个人文件知识库的分层标签、结构化属性和人工确认字段，避免只靠一串粗标签。"
+  setup_questions:
+    - "你更习惯按项目、领域、资源、归档浏览，还是按文件类型和时间浏览？"
+    - "哪些文档类型对你最重要，例如合同、发票、论文、说明书、简历、照片、代码？"
+    - "哪些标签必须和隐私策略绑定，例如财务、医疗、证件、密钥、客户资料？"
+    - "哪些标签只应该由用户确认，不能由模型自动最终决定？"
+  design_principles:
+    - "保留原始路径，不强制改名或移动文件。"
+    - "先分维度，再打标签：层级、文档身份、知识主题、工作流、隐私、来源都分开。"
+    - "自动标签和人工确认标签分开保存，避免模型一次误判污染最终知识库。"
+    - "标签要带证据，方便用户知道为什么被打上这个标签。"
+    - "嵌套标签使用 /，例如 topic/privacy_policy，便于 Markdown、Obsidian 和 HTML UI 展示。"
+  inherited_patterns:
+    - system: "Paperless-ngx"
+      keep: "document_type、correspondent、tags、全文搜索和可模板化 storage path。"
+    - system: "Zotero"
+      keep: "collection 做浏览层级，tags 做可移植细节，automatic tags 可隐藏或删除。"
+    - system: "Obsidian"
+      keep: "slash nested tags，可在标签视图中按树展开。"
+    - system: "Notion"
+      keep: "Select / Multi-select / Date / Person / Status 这类结构化属性。"
+    - system: "Google Drive Labels"
+      keep: "标签不仅用于查找，也用于治理、敏感分类和处理策略。"
+    - system: "TagSpaces"
+      keep: "本地 sidecar 元数据，避免标签被锁在单个数据库或云服务里。"
+    - system: "PARA / Johnny.Decimal"
+      keep: "小而稳定的顶层浏览结构，避免无限嵌套。"
+
+naming:
+  style: nested_slash
+  examples:
+    - collection/projects
+    - document/invoice
+    - topic/privacy_policy
+    - workflow/waiting_review
+    - sensitivity/financial
+  reserved_prefixes:
+    - collection
+    - document
+    - topic
+    - workflow
+    - sensitivity
+    - source
+
+output_fields:
+  rule_tags: "规则粗标签，自动生成，永远保留用于回退和对比。"
+  model_tags: "模型建议标签，必须带 confidence 和 evidence。"
+  accepted_tags: "用户确认后的最终标签，优先用于浏览和搜索。"
+  suggested_collection: "建议放入的人类浏览层级，例如 Projects / Areas / Resources / Archives。"
+  document_type: "文档身份，例如 invoice、contract、note、source_code。"
+  correspondent: "相关方，例如公司、人、机构；来自 Paperless-ngx 的实用字段。"
+  topics: "知识主题，可多选，支持嵌套标签。"
+  entities: "文件中出现的人、公司、项目、地点、时间等实体。"
+  sensitivity: "敏感度标签，用于隐私和云端处理边界。"
+  workflow_status: "处理状态，例如 inbox、waiting_review、archived、ignored。"
+  evidence: "自动标签证据，例如命中的章节标题、关键词、字段名或模型引用片段。"
+
+dimensions:
+  - id: collection
+    zh: "浏览层级"
+    purpose: "给人点开浏览，继承 PARA / Johnny.Decimal / Zotero collection 思路。"
+    user_editable: true
+  - id: document
+    zh: "文档身份"
+    purpose: "回答“这是什么类型的文件”，继承 Paperless-ngx document type 思路。"
+    user_editable: true
+  - id: topic
+    zh: "知识主题"
+    purpose: "回答“内容在讲什么”，适合模型和全文分析。"
+    user_editable: true
+  - id: workflow
+    zh: "处理状态"
+    purpose: "回答“下一步怎么处理”，例如待复核、归档、忽略。"
+    user_editable: true
+  - id: sensitivity
+    zh: "敏感度"
+    purpose: "回答“隐私风险多高”，必须和 privacy.yaml、LLM policy 联动。"
+    user_editable: true
+  - id: source
+    zh: "来源/相关方"
+    purpose: "回答“来自谁、属于哪个系统或组织”，继承 Paperless correspondent 思路。"
+    user_editable: true
+
+tags:
+  - id: collection/projects
+    zh: "项目"
+    en: "Projects"
+    dimension: collection
+    description: "有明确目标和结束条件的资料集合。"
+    aliases: ["project", "项目资料"]
+  - id: collection/areas
+    zh: "领域"
+    en: "Areas"
+    dimension: collection
+    description: "长期维护、没有明确结束日期的责任领域。"
+    aliases: ["area", "长期领域"]
+  - id: collection/resources
+    zh: "资源"
+    en: "Resources"
+    dimension: collection
+    description: "可复用参考资料、教程、研究材料和知识素材。"
+    aliases: ["resource", "参考资料"]
+  - id: collection/archives
+    zh: "归档"
+    en: "Archives"
+    dimension: collection
+    description: "已完成、低频使用、只需保留检索能力的资料。"
+    aliases: ["archive", "历史资料"]
+
+  - id: document/source_code
+    zh: "源码"
+    en: "Source code"
+    dimension: document
+    description: "程序源码或脚本。"
+    aliases: ["code", "source_code"]
+  - id: document/test_file
+    zh: "测试文件"
+    en: "Test file"
+    dimension: document
+    description: "自动化测试、夹具和验证代码。"
+    aliases: ["test", "tests"]
+  - id: document/configuration_file
+    zh: "配置文件"
+    en: "Configuration file"
+    dimension: document
+    description: "YAML、JSON、TOML、INI 等配置。"
+    aliases: ["config", "configuration_file"]
+  - id: document/project_documentation
+    zh: "项目文档"
+    en: "Project documentation"
+    dimension: document
+    description: "README、设计文档、使用说明和项目记录。"
+    aliases: ["docs", "readme", "project_doc"]
+  - id: document/general
+    zh: "普通文档"
+    en: "General document"
+    dimension: document
+    description: "无法进一步归入发票、合同、证件、笔记等细类的普通文档。"
+    aliases: ["document", "doc", "general_document"]
+  - id: document/file
+    zh: "普通文件"
+    en: "Generic file"
+    dimension: document
+    description: "暂时无法识别具体身份的文件。"
+    aliases: ["file", "generic_file"]
+  - id: document/invoice
+    zh: "发票"
+    en: "Invoice"
+    dimension: document
+    description: "发票、账单、收据等财务凭证。"
+    default_sensitivity: sensitivity/financial
+    aliases: ["invoice", "receipt", "bill", "发票", "收据"]
+  - id: document/contract
+    zh: "合同"
+    en: "Contract"
+    dimension: document
+    description: "合同、协议、NDA、法律草稿。"
+    default_sensitivity: sensitivity/legal
+    aliases: ["contract", "agreement", "nda", "合同"]
+  - id: document/identity
+    zh: "身份证件"
+    en: "Identity document"
+    dimension: document
+    description: "护照、身份证、签证、驾驶证等证件扫描件。"
+    default_sensitivity: sensitivity/identity
+    aliases: ["passport", "id card", "identity", "证件"]
+  - id: document/note
+    zh: "笔记"
+    en: "Note"
+    dimension: document
+    description: "个人笔记、想法、草稿和知识卡片。"
+    aliases: ["note", "markdown", "笔记"]
+
+  - id: topic/privacy_policy
+    zh: "隐私策略"
+    en: "Privacy policy"
+    dimension: topic
+    description: "决定文件是否可读、可提取、可向量化或必须阻止。"
+    aliases: ["privacy", "deny", "metadata_only", "no_embedding"]
+  - id: topic/llm_policy
+    zh: "LLM 策略"
+    en: "LLM policy"
+    dimension: topic
+    description: "控制本地模型、云端模型、授权路径和风险确认。"
+    aliases: ["llm", "cloud_llm", "local_llm"]
+  - id: topic/content_extraction
+    zh: "正文提取"
+    en: "Content extraction"
+    dimension: topic
+    description: "把文件内容转换成可分析文本或 Markdown。"
+    aliases: ["extract", "parse", "parser"]
+  - id: topic/configuration
+    zh: "配置"
+    en: "Configuration"
+    dimension: topic
+    description: "配置模板、运行参数、初始化向导和可调整规则。"
+    aliases: ["config", "configuration", "yaml"]
+  - id: topic/semantic_analysis
+    zh: "内容理解"
+    en: "Semantic analysis"
+    dimension: topic
+    description: "摘要、主题、标签、实体、置信度和知识索引。"
+    aliases: ["analysis", "analyze", "summary", "tagging"]
+  - id: topic/human_review
+    zh: "人工复核"
+    en: "Human review"
+    dimension: topic
+    description: "系统无法可靠自动处理时交给用户确认。"
+    aliases: ["review", "human-review", "waiting_review"]
+  - id: topic/scan_planning
+    zh: "扫描计划"
+    en: "Scan planning"
+    dimension: topic
+    description: "dry-run 扫描、访问计划、路径盘点和范围控制。"
+    aliases: ["scan", "dry-run", "scan-plan"]
+  - id: topic/scan_roots
+    zh: "扫描目录"
+    en: "Scan roots"
+    dimension: topic
+    description: "推荐扫描入口、用户目录、同步盘和知识收件箱。"
+    aliases: ["roots", "documents", "downloads", "onedrive"]
+  - id: topic/scan_reporting
+    zh: "扫描报告"
+    en: "Scan reporting"
+    dimension: topic
+    description: "扫描计划、访问日志、策略命中统计和人类可读报告。"
+    aliases: ["report", "access-log", "scan report"]
+  - id: topic/inventory_db
+    zh: "文件清单数据库"
+    en: "Inventory database"
+    dimension: topic
+    description: "SQLite inventory、文件元数据、提取状态和查询。"
+    aliases: ["inventory", "sqlite"]
+  - id: topic/cli_workflow
+    zh: "命令行流程"
+    en: "CLI workflow"
+    dimension: topic
+    description: "把扫描、提取、分析、复核等步骤串成可执行命令。"
+    aliases: ["cli", "command", "argparse"]
+  - id: topic/test_coverage
+    zh: "测试覆盖"
+    en: "Test coverage"
+    dimension: topic
+    description: "自动化测试、夹具、回归验证和行为规格。"
+    aliases: ["pytest", "test", "fixture"]
+  - id: topic/project_documentation
+    zh: "项目文档"
+    en: "Project documentation"
+    dimension: topic
+    description: "说明项目目标、使用方式、阶段边界、路线图和协作方式。"
+    aliases: ["readme", "docs", "guide"]
+  - id: topic/roadmap
+    zh: "计划/路线图"
+    en: "Roadmap"
+    dimension: topic
+    description: "阶段计划、里程碑、难点拆分和后续能力。"
+    aliases: ["roadmap", "plan", "milestone"]
+  - id: topic/open_source
+    zh: "开源治理"
+    en: "Open source governance"
+    dimension: topic
+    description: "许可证、贡献方式、公开仓库和社区协作。"
+    aliases: ["license", "apache", "github", "contribution"]
+  - id: topic/html_review_ui
+    zh: "HTML 交互审阅"
+    en: "HTML review UI"
+    dimension: topic
+    description: "未来给人点击确认、忽略、授权或稍后审核的本地页面。"
+    aliases: ["html", "review-decisions"]
+
+  - id: workflow/inbox
+    zh: "收件箱"
+    en: "Inbox"
+    dimension: workflow
+    description: "刚发现或刚导入，尚未判断价值。"
+  - id: workflow/active
+    zh: "活跃"
+    en: "Active"
+    dimension: workflow
+    description: "近期仍可能使用或正在处理。"
+  - id: workflow/waiting_review
+    zh: "待复核"
+    en: "Waiting review"
+    dimension: workflow
+    description: "系统不确定，需要人确认标签、摘要或隐私策略。"
+  - id: workflow/archive_candidate
+    zh: "可归档"
+    en: "Archive candidate"
+    dimension: workflow
+    description: "价值较低频，建议移动到归档层级但保留搜索。"
+  - id: workflow/ignored
+    zh: "忽略"
+    en: "Ignored"
+    dimension: workflow
+    description: "用户确认暂不纳入知识库。"
+
+  - id: sensitivity/public
+    zh: "公开"
+    en: "Public"
+    dimension: sensitivity
+    description: "可公开或低敏资料。"
+    recommended_policy: allow
+  - id: sensitivity/personal
+    zh: "个人信息"
+    en: "Personal"
+    dimension: sensitivity
+    description: "包含个人生活、联系人、地址、简历等信息。"
+    recommended_policy: no_embedding
+  - id: sensitivity/financial
+    zh: "财务"
+    en: "Financial"
+    dimension: sensitivity
+    description: "银行、税务、发票、账单、工资和投资记录。"
+    recommended_policy: metadata_only
+  - id: sensitivity/legal
+    zh: "法律/合同"
+    en: "Legal"
+    dimension: sensitivity
+    description: "合同、协议、NDA、法律草稿和争议材料。"
+    recommended_policy: no_embedding
+  - id: sensitivity/medical
+    zh: "医疗"
+    en: "Medical"
+    dimension: sensitivity
+    description: "病历、检查报告、处方、保险理赔。"
+    recommended_policy: metadata_only
+  - id: sensitivity/identity
+    zh: "身份资料"
+    en: "Identity"
+    dimension: sensitivity
+    description: "身份证、护照、签证、驾驶证等。"
+    recommended_policy: metadata_only
+  - id: sensitivity/credential
+    zh: "密钥凭证"
+    en: "Credential"
+    dimension: sensitivity
+    description: "密码、token、密钥、钱包、证书。"
+    recommended_policy: deny

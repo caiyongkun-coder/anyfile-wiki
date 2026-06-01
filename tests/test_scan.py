@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import importlib
+import os
 from collections.abc import Iterable, Mapping
 from enum import Enum
 from pathlib import Path
@@ -360,3 +361,32 @@ def test_scan_paths_preserves_policy_actions_in_plan(tmp_path):
 
     assert denied_record is not None
     assert _kind(denied_record) == "deny"
+
+
+def test_scan_paths_denies_symlink_files_by_default(tmp_path):
+    scan_mod = _scan_module()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("secret target", encoding="utf-8")
+    scan_root = tmp_path / "scan-root"
+    scan_root.mkdir()
+    link = scan_root / "linked-secret.txt"
+    try:
+        os.symlink(secret, link)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    result = scan_mod.scan_paths(
+        [scan_root],
+        StubPolicyEngine(default="allow"),
+        dry_run=True,
+        follow_symlinks=False,
+    )
+
+    records = _flatten_records(result)
+    link_record = _find_record(records, link)
+    assert link_record is not None
+    assert _kind(link_record) == "deny"
+    assert _allows_content_read(link_record) is False
+    assert _field(link_record, "extra")["is_symlink"] is True

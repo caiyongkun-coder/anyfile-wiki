@@ -139,8 +139,14 @@ def _scan_one(
     sort_entries: bool,
 ) -> Iterable[ScanEntry]:
     try:
+        is_symlink = path.is_symlink()
         is_dir = path.is_dir()
-        entry = _entry_from_path(path, is_dir, policy_engine)
+        entry = _entry_from_path(
+            path,
+            is_dir,
+            policy_engine,
+            follow_symlinks=follow_symlinks,
+        )
         should_yield = resume_key is None or _scan_order_key(path) > resume_key
         if should_yield:
             yield entry
@@ -154,7 +160,7 @@ def _scan_one(
             return
         if entry.decision.is_excluded:
             return
-        if path.is_symlink() and not follow_symlinks:
+        if is_symlink and not follow_symlinks:
             return
 
         with os.scandir(path) as iterator:
@@ -183,11 +189,25 @@ def _scan_one(
         stats.errors += 1
 
 
-def _entry_from_path(path: Path, is_dir: bool, policy_engine: PolicyEngine) -> ScanEntry:
-    raw_decision = policy_engine.decide(path, is_dir=is_dir)
-    decision = _coerce_decision(raw_decision, path, is_dir)
-    stat = path.stat()
+def _entry_from_path(
+    path: Path,
+    is_dir: bool,
+    policy_engine: PolicyEngine,
+    *,
+    follow_symlinks: bool,
+) -> ScanEntry:
+    is_symlink = path.is_symlink()
+    if is_symlink and not follow_symlinks:
+        decision = _symlink_block_decision(path, is_dir)
+    else:
+        policy_path = path.resolve() if is_symlink and follow_symlinks else path
+        raw_decision = policy_engine.decide(policy_path, is_dir=is_dir)
+        decision = _coerce_decision(raw_decision, path, is_dir)
+    stat = path.stat() if follow_symlinks or not is_symlink else path.lstat()
     now = datetime.now(timezone.utc).isoformat()
+    extra = {"is_symlink": is_symlink}
+    if is_symlink:
+        extra["symlink_target"] = str(path.resolve(strict=False))
     return ScanEntry(
         path=str(path),
         name=path.name,
@@ -199,7 +219,23 @@ def _entry_from_path(path: Path, is_dir: bool, policy_engine: PolicyEngine) -> S
         ctime=stat.st_ctime,
         decision=decision,
         last_seen_at=now,
-        extra={"is_symlink": path.is_symlink()},
+        extra=extra,
+    )
+
+
+def _symlink_block_decision(path: Path, is_dir: bool) -> AccessDecision:
+    return AccessDecision(
+        path=str(path.absolute()).replace("\\", "/"),
+        is_dir=is_dir,
+        access_policy="deny",
+        policy_source="scanner.symlink",
+        reason="Symlink target was not followed; pass --follow-symlinks to evaluate the resolved target.",
+        is_read_allowed=False,
+        is_extract_allowed=False,
+        is_index_allowed=False,
+        is_embedding_allowed=False,
+        metadata_only=False,
+        is_excluded=True,
     )
 
 

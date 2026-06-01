@@ -537,14 +537,22 @@ def cmd_scan(args) -> int:
     write_access_log(result, log_path)
 
     inventory_count = 0
+    missing_count = 0
     if not args.no_inventory:
         with Inventory(inventory_path) as inventory:
             inventory_count = inventory.upsert_entries(result.entries)
+            if args.max_entries is None:
+                missing_count = inventory.mark_missing_under_roots(
+                    args.roots,
+                    [entry.path for entry in result.entries],
+                )
 
     print(f"scan-plan: {plan_path}")
     print(f"access-log: {log_path}")
     if not args.no_inventory:
         print(f"inventory: {inventory_path} ({inventory_count} entries)")
+        if missing_count:
+            print(f"marked_missing: {missing_count}")
     for key, value in result.stats.as_dict().items():
         print(f"{key}: {value}")
     if result.errors:

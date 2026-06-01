@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import types
 
+from anyfile_wiki import parse as parse_mod
 from anyfile_wiki.inventory import Inventory
 from anyfile_wiki.parse import build_parse_jobs_from_records, extract_jobs, write_manifest
 from anyfile_wiki.policy import PolicyEngine
@@ -202,3 +203,30 @@ def test_xlsx_extract_uses_spreadsheet_preview_parser(tmp_path, monkeypatch):
     assert "parser: spreadsheet_preview" in text
     assert "工作表: 预算" in text
     assert "贷款" in text
+
+
+def test_direct_text_extract_skips_files_above_safety_limit(tmp_path, monkeypatch):
+    source = tmp_path / "large.md"
+    source.write_text("abcdef", encoding="utf-8")
+    monkeypatch.setattr(parse_mod, "MAX_DIRECT_TEXT_BYTES", 4, raising=False)
+    job_records = [
+        {
+            "path": str(source),
+            "extension": ".md",
+            "is_dir": False,
+            "is_read_allowed": True,
+            "is_extract_allowed": True,
+            "is_embedding_allowed": True,
+            "access_policy": "allow",
+            "policy_reason": "test",
+            "size_bytes": source.stat().st_size,
+            "mtime": source.stat().st_mtime,
+        }
+    ]
+
+    results = parse_mod.extract_jobs(build_parse_jobs_from_records(job_records), tmp_path / "extract")
+
+    assert results[0].parser == "direct_text"
+    assert results[0].status == "skipped"
+    assert results[0].output_path is None
+    assert "too large" in (results[0].error or "")

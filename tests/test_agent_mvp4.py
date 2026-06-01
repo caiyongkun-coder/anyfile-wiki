@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+from importlib import resources
 from pathlib import Path
 import subprocess
 import sys
@@ -49,6 +50,18 @@ def _write_profile(path: Path, asset_dir: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def test_default_configs_are_available_as_package_resources():
+    config_root = resources.files("anyfile_wiki.configs")
+
+    for name in (
+        "privacy.example.yaml",
+        "roots.example.yaml",
+        "schedule.example.yaml",
+        "excludes.default.yaml",
+    ):
+        assert config_root.joinpath(name).is_file()
 
 
 def test_agent_init_creates_agent_readable_configs_without_overwriting(tmp_path):

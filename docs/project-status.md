@@ -49,7 +49,7 @@
 
 ## 最新验证
 
-- `python -m pytest -q`：`103 passed`
+- `python -m pytest -q`：`119 passed`
 - `anyfile-wiki --help` 已包含 `agent-init`、`query`、`usage-event`、`decisions` 和 `assets` 命令。
 - `anyfile-wiki run --help` 已包含 `run-state.json` 日常运行入口。
 - 演示页已生成：

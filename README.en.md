@@ -11,6 +11,22 @@ AnyFile Wiki is a local-first personal file knowledge governance layer for AI ag
 
 It is not just another RAG chat app. AnyFile Wiki is a local file knowledge governance layer: it first decides what is safe to touch, then extracts, summarizes, tags, builds an asset index, creates virtual collections, and gives auditable archive/delete suggestions without moving, deleting, or renaming your original files.
 
+## Why Install the Agent Skill First
+
+AnyFile Wiki is designed primarily for agents. If you only install the Python package, an agent can call the CLI as a loose set of commands; after installing `skills/anyfile-wiki/SKILL.md`, the agent gets a stable operating protocol: explain privacy rules first, run a dry-run, build indexes in stages, then query indexes before reopening original files.
+
+The Agent Skill does not bypass safety rules. It constrains how agents use them, so the workflow becomes more stable, more context-efficient, and more auditable.
+
+| Workflow area | Agent without the Skill | Agent with the Skill |
+| --- | --- | --- |
+| First setup | May only ask “which directory should I scan?” and miss sensitive paths, metadata-only roots, or no-embedding rules | Must guide `agent-init`, privacy questions, scan roots, analysis mode, and dry-run confirmation |
+| Privacy boundary | Depends on temporary prompt memory and may confuse “can see path” with “can read body” | Reads `privacy.yaml` / `agent-profile.yaml` first and follows `deny > metadata_only > no_embedding > allow` |
+| Scan and resume | May rewalk directories for every task and has weak recovery after interruption | Uses `run-state.json`, staged `run`, and incremental extraction for idle-time progress |
+| Retrieval | Often uses `rg`, shell traversal, or direct file opens; good for one-off search but not reusable | Queries `asset-index.jsonl`, sidecars, and HTML indexes first, then opens originals only when needed |
+| Context cost | Can flood context with raw text, long file lists, or command output | Usually returns top-N asset records, summaries, tags, asset IDs, and review state |
+| Human review | Needs ad hoc explanations for uncertain files | Uses `human-review.html`, `review-server`, and `next-actions.jsonl` as a writeback loop |
+| Long-term optimization | Has little memory of which files were searched, opened, or cited | `usage-event` and `asset-score` record usage signals for better ranking and archive suggestions |
+
 ## Safest First Test
 
 Do not start by scanning your whole machine or a sensitive directory. Create a small folder with synthetic or non-sensitive files first, then run a dry-run:
@@ -65,6 +81,41 @@ This lets an agent answer:
 - Which files look like history, attachments, batches, or duplicate candidates?
 - Which files need human review?
 - Which files may be archived, and which should never be deleted?
+
+## Performance and Scale Limits
+
+These numbers are for agent workload planning, not a hardware-independent guarantee. The benchmark used locally generated synthetic `.txt` / `.md` files with no personal data under `.tmp_pytest/readme_benchmark`. Test environment: Windows 11, Python 3.12.7, local SSD, command entry point `python -m anyfile_wiki`.
+
+| Files | Synthetic corpus | raw `rg budget` | `scan` dry-run | `extract` + `analyze` + `review` + `assets/html` | Cold full pipeline | Indexed `query` average |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 1.35 MB | 0.22s | 0.36s | 6.31s | 6.68s | 0.29s |
+| 5,000 | 6.77 MB | 3.60s | 0.78s | 41.79s | 42.57s | 0.49s |
+| 10,000 | 13.54 MB | 7.03s | 1.34s | 90.78s | 92.12s | 0.87s |
+
+How to read this:
+
+- For a one-off keyword search over 1,000 plain text files, `rg` is still very fast. AnyFile Wiki should not be described as a universal raw-search accelerator.
+- At 10,000 files, raw full-text search for `budget` took 7.03s; after indexing, `anyfile-wiki query` averaged 0.87s against the asset index, about 8.1x faster, without reopening original files.
+- The cold full pipeline is dominated by `extract`: on 10,000 small text files, extract took 79.08s; `scan` took 1.34s, rules analysis 6.36s, and assets/html/sidecars 4.62s.
+- The main agent optimization is not that the first pass is free. It is that one privacy-gated read creates reusable indexes, so future search, citation, review, and archive suggestions continue from `asset_id` and sidecars.
+
+For the 10,000-file run, generated output sizes were: `inventory.sqlite` 13.25 MB, `extract/` 19.28 MB, `analyze/` 38.83 MB, `assets/` 48.95 MB, and `html/` 15.70 MB. Tiny files are a metadata-heavy case; large PDFs, spreadsheets, OCR images, or LLM analysis shift the bottleneck to parsers, OCR, or model throughput.
+
+Conservative estimates from this local run:
+
+| Scale | Expected behavior |
+| --- | --- |
+| 10k files | Local plain-text cold start in roughly 1-2 minutes; later agent queries usually under 1 second |
+| 100k files | Dry-run scan in tens of seconds; full direct-text extraction and rules analysis around 15-25 minutes; chunked `run` is recommended |
+| 500k+ files | Cold extraction can move into hours; use stricter roots, metadata-only rules, excludes, and batches |
+| 1M-file class | Best approached as layered metadata/inventory governance first; full body extraction, HTML, and JSONL indexes become the main limits |
+
+Current limits and cautions:
+
+- `anyfile-wiki run` supports `--max-scan-entries`, `--extract-limit`, and `--analyze-limit`; large roots should run in chunks.
+- Direct text extraction has a 25 MB per-source guardrail. Larger documents need specialized parsers, batching, or later optimization.
+- OCR, MarkItDown, local LLM, and cloud LLM time are not included above; they are usually much slower than scan and rules analysis.
+- The current JSONL/SQLite structure is comfortable for 10k-100k files. Beyond that, watch HTML pagination, index file size, query load cost, and future SQLite FTS / batched extraction work.
 
 ## Why This Exists
 

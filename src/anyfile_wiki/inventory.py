@@ -138,6 +138,40 @@ class Inventory:
                 count += 1
         return count
 
+    def mark_missing_under_roots(
+        self,
+        roots: Iterable[str | Path],
+        seen_paths: Iterable[str | Path],
+    ) -> int:
+        root_keys = [_path_order_key(root).rstrip("/") for root in roots]
+        root_keys = [key for key in root_keys if key]
+        seen_keys = {_path_order_key(path) for path in seen_paths}
+        if not root_keys:
+            return 0
+
+        rows = self.connection.execute(
+            """
+            SELECT path, normalized_path
+            FROM files
+            WHERE exists_now = 1
+            """
+        ).fetchall()
+        missing_paths = [
+            str(row["path"])
+            for row in rows
+            if _under_any_root(str(row["normalized_path"]), root_keys)
+            and str(row["normalized_path"]).casefold() not in seen_keys
+        ]
+        if not missing_paths:
+            return 0
+
+        with self.connection:
+            self.connection.executemany(
+                "UPDATE files SET exists_now = 0 WHERE path = ?",
+                [(path,) for path in missing_paths],
+            )
+        return len(missing_paths)
+
     def stats(self) -> dict[str, int]:
         rows = self.connection.execute(
             """
@@ -391,3 +425,8 @@ def _extract_row_to_dict(row: sqlite3.Row) -> dict:
 
 def _path_order_key(path: str | Path) -> str:
     return str(Path(path).absolute()).replace("\\", "/").casefold()
+
+
+def _under_any_root(path: str, root_keys: list[str]) -> bool:
+    normalized = path.replace("\\", "/").casefold().rstrip("/")
+    return any(normalized == root or normalized.startswith(root + "/") for root in root_keys)

@@ -1,0 +1,74 @@
+# AnyFile Wiki LLM policy example.
+#
+# This module controls whether content understanding uses only local rules,
+# a local LLM, or a cloud LLM. The default is intentionally conservative:
+# no cloud API is enabled.
+#
+# Modes:
+# - rules: no LLM, only path/extension/keyword rules.
+# - local: use a local LLM endpoint such as Ollama or LM Studio.
+# - cloud: use a cloud API only after explicit path authorization and risk acknowledgement.
+# - off: disable analysis/enrichment beyond extraction.
+
+version: 1
+
+assistant:
+  purpose: "配置内容理解阶段是否使用本地模型或云端模型，并明确云端读取的隐私边界。"
+  setup_questions:
+    - "这台电脑是否安装了本地 LLM，例如 Ollama、LM Studio、llama.cpp 或 vLLM？"
+    - "是否允许程序探测本地模型服务，例如 http://localhost:11434？"
+    - "是否需要启用云端 API？如果需要，哪些目录明确允许发送到云端？"
+    - "哪些目录即使可以本地读取，也绝对不能发送到云端？"
+  privacy_notes:
+    - "默认模式是 rules，不会调用任何模型。"
+    - "local 模式要求文件正文只发送到本机模型服务。"
+    - "cloud 模式必须显式开启、显式确认风险、显式配置 allowed_paths。"
+    - "deny、metadata_only、no_embedding 永远不允许发送到云端。"
+
+llm:
+  mode: rules        # off | rules | local | cloud
+  provider: none     # none | ollama | lmstudio | llama.cpp | vllm | openai | compatible
+  model: ""
+  endpoint: ""
+
+analysis:
+  # Maximum extracted text sent to an LLM for one file. Larger files should be
+  # chunked in a later milestone; this MVP sends one bounded prompt per file.
+  max_prompt_chars: 24000
+  timeout_seconds: 60
+  temperature: 0.1
+
+local:
+  enabled: false
+  provider: ollama
+  model: "qwen2.5:7b"
+  endpoint: "http://localhost:11434"
+  allow_network_loopback_only: true
+
+cloud:
+  enabled: false
+  provider: openai
+  model: ""
+  endpoint: ""
+  api_key_env: OPENAI_API_KEY
+  risk_acknowledged: false
+
+  # Cloud processing is allowed only when all of these are true:
+  # 1. cloud.enabled is true.
+  # 2. cloud.risk_acknowledged is true.
+  # 3. file policy is in allowed_policies.
+  # 4. file policy is not in forbidden_policies.
+  # 5. file path is under allowed_paths.
+  allowed_policies:
+    - allow
+  forbidden_policies:
+    - deny
+    - metadata_only
+    - no_embedding
+
+  # Empty by default. Users must add explicit directories before any cloud model
+  # may receive file content.
+  allowed_paths: []
+
+  # Optional reminders for setup agents and UIs.
+  warning: "启用云端 API 会把允许目录中的文件正文发送给第三方模型服务。请只加入你明确愿意上传的目录。"

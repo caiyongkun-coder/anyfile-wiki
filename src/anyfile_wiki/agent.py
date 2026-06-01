@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 import json
-import shutil
 import uuid
 
 import yaml
 
+from .defaults import copy_default_config
 from .assets import load_jsonl_records
 
 
@@ -138,16 +138,15 @@ def initialize_agent_workspace(
     profile = Path(profile_path)
     config_dir = profile.parent
     run_dir = Path(out_dir)
-    repo_configs = Path(__file__).resolve().parents[2] / "configs"
     targets = {
         "privacy": Path(privacy_config) if privacy_config else config_dir / "privacy.yaml",
         "roots": Path(roots_config) if roots_config else config_dir / "roots.yaml",
         "schedule": Path(schedule_config) if schedule_config else config_dir / "schedule.yaml",
     }
     templates = {
-        "privacy": repo_configs / "privacy.example.yaml",
-        "roots": repo_configs / "roots.example.yaml",
-        "schedule": repo_configs / "schedule.example.yaml",
+        "privacy": "privacy.example.yaml",
+        "roots": "roots.example.yaml",
+        "schedule": "schedule.example.yaml",
     }
     config_results = {
         name: _copy_template_if_missing(source=templates[name], target=target)
@@ -335,12 +334,11 @@ def format_query_results(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _copy_template_if_missing(*, source: Path, target: Path) -> dict[str, str]:
+def _copy_template_if_missing(*, source: str, target: Path) -> dict[str, str]:
     if target.exists():
-        return {"path": _posix(target), "status": "exists", "source": _posix(source)}
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
-    return {"path": _posix(target), "status": "created", "source": _posix(source)}
+        return {"path": _posix(target), "status": "exists", "source": source}
+    copy_default_config(source, target)
+    return {"path": _posix(target), "status": "created", "source": source}
 
 
 def _write_profile_if_missing(path: Path, profile: dict[str, Any]) -> dict[str, str]:

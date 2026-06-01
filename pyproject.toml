@@ -44,6 +44,9 @@ anyfile-wiki = "anyfile_wiki.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"anyfile_wiki.configs" = ["*.yaml"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
