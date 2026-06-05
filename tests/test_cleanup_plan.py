@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 
+from anyfile_wiki import cleanup
 from anyfile_wiki.cleanup import build_archive_plan, write_archive_plan_outputs
 from anyfile_wiki.cli import main as cli_main
 from anyfile_wiki.sidecars import attach_asset_ids, write_sidecar_outputs
@@ -180,3 +181,162 @@ def test_archive_plan_cli_reads_sidecars_and_writes_outputs(tmp_path):
     assert payload["safety"]["proposed_only"] is True
     assert Path(payload["outputs"]["archive_plan_jsonl"]).exists()
     assert Path(payload["outputs"]["archive_plan_md"]).exists()
+
+
+def test_cleanup_decisions_build_draft_actions_and_rollback_manifest(tmp_path):
+    plan = [
+        {
+            "schema_version": 1,
+            "plan_id": "cleanup:plan-sha256:archive",
+            "asset_id": "asset:path-sha256:archive",
+            "path": "C:/docs/old-report.pdf",
+            "title": "old-report.pdf",
+            "candidate_type": "archive",
+            "recommended_action": "propose_cold_archive",
+            "proposed_operation": "none",
+            "safety_status": "proposed_only",
+            "execution_allowed": False,
+            "requires_confirmation": True,
+            "rollback_manifest_required": True,
+            "destination_hint": "cold-archive/reports/old-report.pdf",
+            "generated_at": "2026-06-01T00:00:00+00:00",
+        },
+        {
+            "schema_version": 1,
+            "plan_id": "cleanup:plan-sha256:delete",
+            "asset_id": "asset:path-sha256:delete",
+            "path": "C:/docs/old-report-copy.pdf",
+            "title": "old-report-copy.pdf",
+            "candidate_type": "delete",
+            "recommended_action": "review_delete_duplicate",
+            "proposed_operation": "none",
+            "safety_status": "proposed_only",
+            "execution_allowed": False,
+            "requires_confirmation": True,
+            "rollback_manifest_required": True,
+            "destination_hint": "manual-review/delete-candidates/reports/old-report-copy.pdf",
+            "generated_at": "2026-06-01T00:00:00+00:00",
+        },
+    ]
+    decisions_path = tmp_path / "cleanup-decisions.jsonl"
+    decisions_path.write_text(
+        "\n".join(
+            json.dumps(record, ensure_ascii=False)
+            for record in [
+                {
+                    "plan_id": "cleanup:plan-sha256:archive",
+                    "decision": "approve_recommendation",
+                    "note": "可以先放进冷归档草案",
+                    "decided_at": "2026-06-02T00:00:00+00:00",
+                },
+                {
+                    "plan_id": "cleanup:plan-sha256:delete",
+                    "decision": "reject",
+                    "note": "副本仍需要保留",
+                    "decided_at": "2026-06-02T00:00:00+00:00",
+                },
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    decisions = cleanup.load_cleanup_decisions(decisions_path)
+    actions, rollback_manifest = cleanup.build_cleanup_decision_actions(plan, decisions)
+
+    assert len(actions) == 2
+    archive_action = actions[0]
+    assert archive_action["action"] == "draft_archive"
+    assert archive_action["cleanup_decision"] == "approve_recommendation"
+    assert archive_action["proposed_operation"] == "none"
+    assert archive_action["safety_status"] == "draft_only"
+    assert archive_action["execution_allowed"] is False
+    assert archive_action["requires_confirmation"] is True
+    assert archive_action["rollback_manifest_required"] is True
+    assert archive_action["target_path"] == "cold-archive/reports/old-report.pdf"
+
+    reject_action = actions[1]
+    assert reject_action["action"] == "reject_cleanup_candidate"
+    assert reject_action["execution_allowed"] is False
+    assert reject_action["rollback_manifest_required"] is True
+
+    assert len(rollback_manifest) == 1
+    draft = rollback_manifest[0]
+    assert draft["plan_id"] == "cleanup:plan-sha256:archive"
+    assert draft["original_path"] == "C:/docs/old-report.pdf"
+    assert draft["target_path"] == "cold-archive/reports/old-report.pdf"
+    assert draft["intended_operation"] == "archive"
+    assert draft["execution_allowed"] is False
+    assert draft["requires_final_confirmation"] is True
+    assert draft["rollback_ready"] is False
+
+
+def test_cleanup_decisions_cli_writes_actions_manifest_and_plan(tmp_path):
+    plan_path = tmp_path / "cleanup" / "archive-plan.jsonl"
+    _write_jsonl(
+        plan_path,
+        [
+            {
+                "schema_version": 1,
+                "plan_id": "cleanup:plan-sha256:archive",
+                "asset_id": "asset:path-sha256:archive",
+                "path": "C:/docs/old-report.pdf",
+                "title": "old-report.pdf",
+                "candidate_type": "archive",
+                "recommended_action": "propose_cold_archive",
+                "proposed_operation": "none",
+                "safety_status": "proposed_only",
+                "execution_allowed": False,
+                "requires_confirmation": True,
+                "rollback_manifest_required": True,
+                "destination_hint": "cold-archive/reports/old-report.pdf",
+                "generated_at": "2026-06-01T00:00:00+00:00",
+            }
+        ],
+    )
+    decisions_path = tmp_path / "cleanup" / "cleanup-decisions.jsonl"
+    _write_jsonl(
+        decisions_path,
+        [
+            {
+                "plan_id": "cleanup:plan-sha256:archive",
+                "decision": "approve_recommendation",
+                "note": "先做草案",
+                "decided_at": "2026-06-02T00:00:00+00:00",
+            }
+        ],
+    )
+
+    code, stdout, stderr = _run_cli(
+        [
+            "cleanup-decisions",
+            "--plan",
+            str(plan_path),
+            "--decisions",
+            str(decisions_path),
+            "--out",
+            str(tmp_path / "cleanup-out"),
+            "--json",
+        ]
+    )
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert payload["decisions"] == 1
+    assert payload["actions"] == 1
+    assert payload["rollback_manifest_drafts"] == 1
+    assert payload["safety"]["executes_filesystem_actions"] is False
+    assert payload["safety"]["requires_final_confirmation"] is True
+    action_path = Path(payload["outputs"]["cleanup_actions_jsonl"])
+    manifest_path = Path(payload["outputs"]["rollback_manifest_draft_jsonl"])
+    plan_md_path = Path(payload["outputs"]["cleanup_decision_plan_md"])
+    assert action_path.exists()
+    assert manifest_path.exists()
+    assert plan_md_path.exists()
+    action = json.loads(action_path.read_text(encoding="utf-8").splitlines()[0])
+    assert action["action"] == "draft_archive"
+    assert action["execution_allowed"] is False
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8").splitlines()[0])
+    assert manifest["rollback_ready"] is False
+    plan_md = plan_md_path.read_text(encoding="utf-8")
+    assert "不会移动、删除、重命名任何原始文件" in plan_md

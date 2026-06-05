@@ -132,6 +132,7 @@ Use `selected`, `opened`, `cited`, or `search_hit` as the event type.
 - Open asset browser: point to `data/daily-run/html/knowledge-index.html`.
 - Open review page: start `review-server`, open the printed `review_url`, and point to `data/daily-run/review/human-review.html` only if service mode is unavailable.
 - Create cleanup plan: run `anyfile-wiki archive-plan --asset-index data/daily-run/assets/asset-index.jsonl --out data/daily-run/cleanup`; treat every candidate as proposed-only and requiring human confirmation.
+- Convert cleanup approvals into drafts: save human approvals as `cleanup-decisions.jsonl`, then run `anyfile-wiki cleanup-decisions --plan data/daily-run/cleanup/archive-plan.jsonl --decisions data/daily-run/cleanup/cleanup-decisions.jsonl --out data/daily-run/cleanup`; treat `cleanup-actions.jsonl` and `rollback-manifest-draft.jsonl` as draft-only, with `execution_allowed: false`.
 - Improve all extracted summaries with host-agent understanding: run `agent-task --kind semantic-index --scope all-extractable`, analyze extracted text, then run `agent-review-apply`.
 - Run review-only host-agent semantic review: run `agent-task --kind semantic-review`, analyze extracted text, then run `agent-review-apply`.
 - Find a file/type/topic: run `query`, then cite paths and virtual paths.

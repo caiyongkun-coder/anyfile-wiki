@@ -24,7 +24,13 @@ from .analyze import (
     write_analysis_outputs,
 )
 from .assets import build_asset_index, load_jsonl_records, write_asset_outputs
-from .cleanup import build_archive_plan, write_archive_plan_outputs
+from .cleanup import (
+    build_archive_plan,
+    cleanup_decisions_as_dicts,
+    load_cleanup_decisions,
+    write_archive_plan_outputs,
+    write_cleanup_decision_outputs,
+)
 from .decisions import (
     actions_as_dicts,
     build_decision_actions,
@@ -368,6 +374,24 @@ def build_parser() -> ArgumentParser:
     )
     archive_plan.add_argument("--json", action="store_true", help="Emit JSON")
     archive_plan.set_defaults(func=cmd_archive_plan)
+
+    cleanup_decisions = subparsers.add_parser(
+        "cleanup-decisions",
+        help="Read cleanup candidate approvals and write safe draft actions",
+    )
+    cleanup_decisions.add_argument(
+        "--plan",
+        default="data/cleanup/archive-plan.jsonl",
+        help="archive-plan.jsonl path",
+    )
+    cleanup_decisions.add_argument(
+        "--decisions",
+        default="data/cleanup/cleanup-decisions.jsonl",
+        help="cleanup-decisions.jsonl path",
+    )
+    cleanup_decisions.add_argument("--out", default="data/cleanup", help="Cleanup decision output directory")
+    cleanup_decisions.add_argument("--json", action="store_true", help="Emit JSON")
+    cleanup_decisions.set_defaults(func=cmd_cleanup_decisions)
 
     run = subparsers.add_parser("run", help="Run one resumable daily processing step with run-state.json")
     run.add_argument("roots", nargs="*", help="Root directories or files. Required when creating a new run state")
@@ -1067,6 +1091,53 @@ def cmd_archive_plan(args) -> int:
     print(f"archive_plan: {len(plan)} candidates")
     for key, value in stats.items():
         print(f"{key}: {value}")
+    for name, path in outputs.items():
+        print(f"{name}: {path}")
+    return 0
+
+
+def cmd_cleanup_decisions(args) -> int:
+    plan_path = Path(args.plan)
+    decisions_path = Path(args.decisions)
+    if not plan_path.exists():
+        print(f"archive plan file not found: {plan_path}", file=sys.stderr)
+        return 2
+    if not decisions_path.exists():
+        print(f"cleanup decisions file not found: {decisions_path}", file=sys.stderr)
+        return 2
+    try:
+        plan_records = load_jsonl_records(plan_path)
+        decisions = load_cleanup_decisions(decisions_path)
+        outputs, stats = write_cleanup_decision_outputs(
+            plan_records,
+            decisions,
+            args.out,
+            plan_path=plan_path,
+            decisions_path=decisions_path,
+        )
+    except ValueError as exc:
+        print(f"invalid cleanup decisions: {exc}", file=sys.stderr)
+        return 2
+    payload = {
+        "decisions": len(decisions),
+        "actions": stats.get("total_actions", 0),
+        "rollback_manifest_drafts": stats.get("rollback_manifest_drafts", 0),
+        "stats": stats,
+        "outputs": {name: str(path) for name, path in outputs.items()},
+        "records": cleanup_decisions_as_dicts(decisions),
+        "safety": {
+            "draft_only": True,
+            "executes_filesystem_actions": False,
+            "requires_final_confirmation": True,
+        },
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print(f"cleanup_decisions: {payload['decisions']}")
+    print(f"cleanup_actions: {payload['actions']}")
+    print(f"rollback_manifest_drafts: {payload['rollback_manifest_drafts']}")
+    print("safety: draft_only; executes_filesystem_actions=false; requires_final_confirmation=true")
     for name, path in outputs.items():
         print(f"{name}: {path}")
     return 0

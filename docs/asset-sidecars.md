@@ -54,6 +54,19 @@ anyfile-wiki archive-plan --asset-index data/assets/asset-index.jsonl --out data
 - `archive-plan.md`：给人类复核的中文报告。
 - `archive-plan-summary.json`：统计、来源路径和安全边界摘要。
 
+人类批复清理候选后，可以把批复保存成 `cleanup-decisions.jsonl`，再生成下一步草案：
+
+```powershell
+anyfile-wiki cleanup-decisions --plan data/cleanup/archive-plan.jsonl --decisions data/cleanup/cleanup-decisions.jsonl --out data/cleanup
+```
+
+`cleanup-decisions` 输出：
+
+- `cleanup-actions.jsonl`：批复后的草案动作，仍然 `execution_allowed: false`。
+- `rollback-manifest-draft.jsonl`：仅对已批准建议生成的回滚 manifest 草案，记录 `original_path`、`target_path` 和 `intended_operation`，但 `rollback_ready: false`。
+- `cleanup-decision-plan.md`：给人类和 agent 共同复核的草案说明。
+- `cleanup-decisions-summary.json`：批复统计、输出路径和安全边界。
+
 ## Asset ID
 
 第一版使用路径稳定主键：
@@ -92,4 +105,4 @@ asset:path-sha256:<sha256(normalized_path)>
 
 `archive_policy` 只表示建议，不执行任何操作。低使用不代表可以删除；`review_required`、`master`、高保留价值或 `never_delete` 都会提高删除风险。
 
-`archive-plan` 输出中的 `proposed_operation` 始终是 `none`，`execution_allowed` 始终是 `false`。任何未来真实移动、删除、重命名都必须先由人确认，并生成包含 `original_path`、`target_path` 和动作人的独立回滚 manifest。
+`archive-plan` 输出中的 `proposed_operation` 始终是 `none`，`execution_allowed` 始终是 `false`。`cleanup-decisions` 也只会生成草案动作和回滚 manifest 草案；即使人类批复了 `approve_recommendation`，输出仍不能直接执行。任何未来真实移动、删除、重命名都必须先由人最终确认，并生成包含 `original_path`、`target_path`、动作人和确认时间的独立回滚 manifest。

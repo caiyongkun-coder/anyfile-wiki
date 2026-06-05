@@ -223,6 +223,7 @@ src/anyfile_wiki/
   decisions.py               Human decisions and agent follow-up action plans
   assets.py                  Final asset index merger after human review
   sidecars.py                Asset signatures, virtual collections, and score sidecars
+  cleanup.py                 Safe cleanup candidates, cleanup approvals, and rollback manifest drafts
   llm_config.py              LLM policy config parser
   html.py                    Local HTML asset browser generator
   cli.py                     CLI entry point
@@ -238,7 +239,7 @@ tests/
 - MVP2.1: LLM policy, cloud authorization boundaries, and human review lists.
 - MVP3: human-browsable asset map. The HTML asset browser, human review page, local submit service, and review writeback to `asset-index.jsonl` are now implemented.
 - MVP4: agent skill / MCP integration. The Codex Skill, agent init, index query, usage-event entry points, and host-agent semantic index/review writeback protocol are now implemented.
-- MVP5: safe cleanup assistant: duplicates, archive candidates, delete candidates, reversible manifests.
+- MVP5: safe cleanup assistant: duplicates, archive candidates, delete candidates, cleanup approval drafts, and reversible manifest drafts.
 - MVP6: app personal-data adapters: browser bookmarks, chat exports, email, note apps, and more.
 
 ## Open Collaboration Areas

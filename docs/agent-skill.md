@@ -102,6 +102,14 @@ anyfile-wiki archive-plan --asset-index data/daily-run/assets/asset-index.jsonl 
 
 这个命令只读取 `asset-index.jsonl`、`collection-index.jsonl` 和 `asset-score.jsonl`，输出 `archive-plan.jsonl`、`archive-plan.md` 和 `archive-plan-summary.json`。所有候选都是 proposed-only：不会移动、删除、重命名源文件，也不会自动执行清理。真正的文件动作必须另行让人确认，并先生成可回滚 manifest。
 
+如果用户已经逐条批复清理候选，agent 可以把批复保存为 `cleanup-decisions.jsonl`，再生成草案动作和回滚 manifest 草案：
+
+```powershell
+anyfile-wiki cleanup-decisions --plan data/daily-run/cleanup/archive-plan.jsonl --decisions data/daily-run/cleanup/cleanup-decisions.jsonl --out data/daily-run/cleanup
+```
+
+支持的批复动作是 `approve_recommendation`、`reject`、`defer` 和 `keep`。即使选择 `approve_recommendation`，输出的 `cleanup-actions.jsonl` 和 `rollback-manifest-draft.jsonl` 也必须保持 `execution_allowed: false`，并要求最终人工确认；它们不是可执行脚本。
+
 ## 使用事件
 
 agent 使用某个资产后，应记录事件：

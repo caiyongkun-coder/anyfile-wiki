@@ -84,6 +84,7 @@ anyfile-wiki assets --analysis data/first-analyze/knowledge-index.jsonl --action
 anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets
 anyfile-wiki sidecars --asset-index data/first-assets/asset-index.jsonl --out data/first-assets --dry-run
 anyfile-wiki archive-plan --asset-index data/first-assets/asset-index.jsonl --out data/first-cleanup
+anyfile-wiki cleanup-decisions --plan data/first-cleanup/archive-plan.jsonl --decisions data/first-cleanup/cleanup-decisions.jsonl --out data/first-cleanup
 anyfile-wiki html --analysis data/first-analyze/knowledge-index.jsonl --out data/first-html
 ```
 
